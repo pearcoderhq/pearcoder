@@ -103,3 +103,67 @@ export function mentionedAgent(event: WireEvent, me: string | undefined): string
   const list = (event.payload.agent_mentions ?? []) as { user?: string; agent?: string }[];
   return list.find((m) => m.user === me)?.agent;
 }
+
+export type AgentState =
+  | 'idle'
+  | 'listening'
+  | 'waiting_owner'
+  | 'approved'
+  | 'working'
+  | 'done'
+  | 'declined';
+
+export interface ItemActivity {
+  user: string;
+  agent: string;
+  state: AgentState;
+  edited: boolean;
+}
+
+/**
+ * What each person's agent is doing, from their `activity.changed` events (ADR-0007): the latest
+ * state per item they were asked about, and each person's overall state (listening or idle).
+ */
+export function activityOf(events: WireEvent[]): {
+  byItem: Map<string, ItemActivity[]>;
+  overall: Map<string, AgentState>;
+} {
+  const latest = new Map<string, ItemActivity>();
+  const overall = new Map<string, AgentState>();
+  for (const e of events) {
+    if (e.type !== 'activity.changed') continue;
+    const state = String(e.payload.state) as AgentState;
+    const agent = String(e.payload.agent);
+    if (typeof e.payload.item === 'string') {
+      latest.set(`${e.payload.item}\u0000${e.actor_user_id}`, {
+        user: e.actor_user_id,
+        agent,
+        state,
+        edited: e.payload.edited === true,
+      });
+    } else {
+      overall.set(e.actor_user_id, state);
+    }
+  }
+  const byItem = new Map<string, ItemActivity[]>();
+  for (const [key, activity] of latest) {
+    const item = key.split('\u0000')[0] ?? '';
+    byItem.set(item, [...(byItem.get(item) ?? []), activity]);
+  }
+  return { byItem, overall };
+}
+
+/** Code refs that a later push of the same repository and branch replaced. */
+export function supersededRefs(events: WireEvent[]): Map<string, string> {
+  const latest = new Map<string, WireEvent>();
+  const superseded = new Map<string, string>();
+  for (const e of events) {
+    if (e.type !== 'code_ref.published') continue;
+    const repo = e.payload.repo as { name?: string; url?: string } | undefined;
+    const key = `${repo?.url ?? repo?.name ?? ''}\u0000${String(e.payload.branch)}`;
+    const previous = latest.get(key);
+    if (previous && previous.payload.commit !== e.payload.commit) superseded.set(previous.id, e.id);
+    latest.set(key, e);
+  }
+  return superseded;
+}

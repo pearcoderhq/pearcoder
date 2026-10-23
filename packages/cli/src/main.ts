@@ -54,11 +54,21 @@ Review
                        share a draft with the session (scanned for secrets first)
   discard <draft-id>   drop a draft without sharing it
 
+Building together
+  task "<title>" [--body "…"] [--to <name>|me [--agent claude|codex]]
+                       create a task; assigning someone's agent asks its owner first
+  task <id> [--status open|in_progress|blocked|done] [--to …] [--note "…"]
+                       update a task (its creator, assignee or the host)
+  tasks [--all]        open tasks and who has them
+
 Agents
   attach --agent claude|codex [--dry-run]
                        add Pearcoder to your agent: MCP server + restricted reviewer
-  agent [auto on|off] [allow <id>] [--session <name|id>]
-                       how your agent acts: auto answers and sends (default on), or waits for you
+  agent [auto mine|others on|off] [allow <id> [--text "…"]] [decline <id>] [stop <id>]
+        [status on|off] [--session <name|id>]
+                       how your agent acts: your own messages go straight to it (mine, default
+                       on); other people's wait for you to approve or edit them (others, default
+                       off); status shares waiting/working/done, never content
   doctor               check identity, sessions, and the Claude Code setup
   mcp                  MCP server for your own Claude Code (started by Claude Code)
 
@@ -104,6 +114,8 @@ const COMMANDS: Record<string, Command> = {
   mcp: commands.mcp,
   attach: commands.attach,
   agent: commands.agent,
+  task: commands.task,
+  tasks: commands.tasks,
   doctor: commands.doctor,
   whoami: commands.whoami,
 };

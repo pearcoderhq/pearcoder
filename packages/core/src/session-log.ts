@@ -87,6 +87,8 @@ export class SessionLog {
   readonly #participants = new Map<UserId, Participant & { key: KeyObject }>();
   // Outcomes by decision. A decided decision takes no more stances and can only be superseded.
   readonly #decided = new Map<string, string>();
+  // Who created each task and who it is assigned to now: they (and the host) may update it.
+  readonly #tasks = new Map<string, { creator: UserId; assignee?: UserId }>();
   readonly #listeners = new Set<EventListener>();
   readonly #seal: ((hash: string) => string) | undefined;
 
@@ -176,7 +178,10 @@ export class SessionLog {
     }
     this.#checkReferences(event);
     if (!this.#limiter.take(participant.userId)) reject('RATE_LIMITED', 'too many events');
-    if (event.type === 'request.created' && !this.#requestLimiter.take(participant.userId)) {
+    if (
+      (event.type === 'request.created' || event.type === 'task.created') &&
+      !this.#requestLimiter.take(participant.userId)
+    ) {
       reject('RATE_LIMITED', 'too many requests');
     }
 
@@ -296,6 +301,44 @@ export class SessionLog {
           `this decision is already ${previous}; a decided decision can only be superseded`,
         );
       }
+    } else if (event.type === 'task.created' || event.type === 'task.updated') {
+      const assignee = payload.assignee as { user: UserId } | undefined;
+      if (assignee && !this.#participants.has(assignee.user)) {
+        reject('INVALID_REFERENCE', 'tasks can only be assigned to session participants');
+      }
+      for (const id of (payload.related ?? []) as string[]) {
+        if (!this.#store.get(id)) reject('INVALID_REFERENCE', 'related events must exist');
+      }
+      if (event.type === 'task.updated') {
+        expect(payload.task, 'task.created', 'task');
+        const task = this.#tasks.get(String(payload.task));
+        const allowed = [task?.creator, task?.assignee];
+        if (!allowed.includes(event.actor_user_id) && !this.#isHost(event.actor_user_id)) {
+          reject('NOT_ADDRESSEE', 'only the task creator, its assignee or the host can update it');
+        }
+      }
+    } else if (event.type === 'code_ref.published') {
+      expect(payload.task, 'task.created', 'task');
+    } else if (event.type === 'activity.changed') {
+      if (payload.item !== undefined && !this.#store.get(String(payload.item))) {
+        reject('INVALID_REFERENCE', 'item must exist');
+      }
+    }
+  }
+
+  #track(event: SequencedEvent): void {
+    if (event.type === 'decision.resolved') {
+      this.#decided.set(String(event.payload.decision), String(event.payload.outcome));
+    } else if (event.type === 'task.created') {
+      const assignee = event.payload.assignee as { user: UserId } | undefined;
+      this.#tasks.set(event.id, {
+        creator: event.actor_user_id,
+        ...(assignee && { assignee: assignee.user }),
+      });
+    } else if (event.type === 'task.updated') {
+      const task = this.#tasks.get(String(event.payload.task));
+      const assignee = event.payload.assignee as { user: UserId } | undefined;
+      if (task && assignee) task.assignee = assignee.user;
     }
   }
 
@@ -340,9 +383,7 @@ export class SessionLog {
         // A failing subscriber must not break appends for everyone else.
       }
     }
-    if (sequenced.type === 'decision.resolved') {
-      this.#decided.set(String(sequenced.payload.decision), String(sequenced.payload.outcome));
-    }
+    this.#track(sequenced);
     return { status: 'appended', event: sequenced };
   }
 
@@ -365,8 +406,8 @@ export class SessionLog {
         } else if (event.type === 'participant.left') {
           const p = this.#participants.get(event.actor_user_id);
           if (p) p.active = false;
-        } else if (event.type === 'decision.resolved') {
-          this.#decided.set(String(event.payload.decision), String(event.payload.outcome));
+        } else {
+          this.#track(event);
         }
         cursor = event.sequence;
       }

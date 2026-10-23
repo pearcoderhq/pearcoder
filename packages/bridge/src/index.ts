@@ -1,4 +1,12 @@
 export {
+  type AgentItem,
+  agentItems,
+  gateOf,
+  type ItemGate,
+  ownerTextOf,
+  signedByOwner,
+} from './agent-items.js';
+export {
   createDraft,
   type Draft,
   DraftError,
@@ -21,11 +29,32 @@ export {
 } from './local-node.js';
 export {
   type AgentPolicy,
+  type Approval,
+  type AutoMode,
   allowItem,
+  approvalOf,
   autoSince,
-  isAllowed,
+  declineItem,
   isAuto,
+  protectedBranches,
+  pushLimits,
   readPolicy,
   setAuto,
+  setShareStatus,
+  sharesStatus,
 } from './policy.js';
 export { agentIdFor, PublishBlockedError, type PublishOptions, publishDraft } from './publish.js';
+export {
+  activeRuns,
+  type Claim,
+  claim,
+  claimedItems,
+  claimOf,
+  countPush,
+  heartbeat,
+  isRunActive,
+  openClaims,
+  type RunFlow,
+  stopItem,
+  wasStopped,
+} from './runs.js';

@@ -56,12 +56,19 @@ export async function publishDraft(
   const outcome =
     draft.kind === 'finding'
       ? await client.append({ type: 'review.finding', payload, ...attribution })
-      : await client.append({
-          type: 'message.created',
-          payload: { text: (payload as { text: string }).text },
-          reply_to: (payload as { reply_to: string }).reply_to,
-          ...attribution,
-        });
+      : draft.kind === 'code_ref'
+        ? await client.append({
+            type: 'code_ref.published',
+            payload,
+            ...(draft.trigger && { reply_to: draft.trigger.item }),
+            ...attribution,
+          })
+        : await client.append({
+            type: 'message.created',
+            payload: { text: (payload as { text: string }).text },
+            reply_to: (payload as { reply_to: string }).reply_to,
+            ...attribution,
+          });
   return {
     draft: markPublished(home, draft.id, outcome.id),
     eventId: outcome.id,

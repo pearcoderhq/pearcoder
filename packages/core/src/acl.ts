@@ -16,6 +16,10 @@ const CONTRIBUTOR: ReadonlySet<KnownEventType> = new Set([
   'decision.proposed',
   'decision.vote',
   'decision.resolved',
+  'task.created',
+  'task.updated',
+  'code_ref.published',
+  'activity.changed',
 ]);
 
 const ALLOWED: Record<Role, ReadonlySet<KnownEventType>> = {

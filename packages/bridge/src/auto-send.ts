@@ -18,7 +18,7 @@ export interface AutoSendOptions {
 }
 
 /**
- * Sends the owner's agent drafts for sessions where the owner left "auto" on (ADR-0006). This runs
+ * Sends the owner's agent drafts for sessions where the owner left auto on (ADR-0006, ADR-0007). This runs
  * in the owner's local node under the owner's own setting; the agent still has no way to publish.
  * The secret scan always runs: a draft that trips it stays a draft and the owner is told.
  */
@@ -36,8 +36,12 @@ export function startAutoSend(options: AutoSendOptions): {
     try {
       for (const draft of listDrafts(options.home, { status: 'draft' })) {
         if (draft.source.via !== 'mcp' || held.has(draft.id)) continue;
-        if (!isAuto(options.home, draft.session_id)) continue;
-        const switchedOn = autoSince(options.home, draft.session_id);
+        // A draft answering the owner's own text follows mode "mine"; anything else "others".
+        // Code refs only ever come from the owner's own items (ADR-0007), never under "others".
+        const mode = draft.trigger?.by_owner ? 'mine' : 'others';
+        if (draft.kind === 'code_ref' && mode !== 'mine') continue;
+        if (!isAuto(options.home, draft.session_id, mode)) continue;
+        const switchedOn = autoSince(options.home, draft.session_id, mode);
         const created = Date.parse(draft.created_at);
         // Only drafts written after this node started and strictly after auto was switched on:
         // a draft from the same millisecond as the switch was written while auto was still off.

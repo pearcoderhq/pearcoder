@@ -132,6 +132,14 @@ export function codexAttachPlan(options: {
         from: join(options.integration, 'skills', 'pearcoder-listen', 'SKILL.md'),
         to: join(options.userHome, '.agents', 'skills', 'pearcoder-listen', 'SKILL.md'),
       },
+      {
+        from: join(options.integration, 'agents', 'pearcoder-dev.toml'),
+        to: join(options.codexHome, 'agents', 'pearcoder-dev.toml'),
+      },
+      {
+        from: join(options.integration, 'skills', 'pearcoder-dev', 'SKILL.md'),
+        to: join(options.userHome, '.agents', 'skills', 'pearcoder-dev', 'SKILL.md'),
+      },
     ],
   };
 }

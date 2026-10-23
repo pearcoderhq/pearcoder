@@ -69,7 +69,16 @@ Then the review loop:
    pearcoder github-review 42               # preview the findings as one GitHub PR review; add --post to post it
    ```
 
-Want your agent to keep up on its own? Run `/pearcoder:listen` in Claude Code. While it runs, it drafts a finding for each new review request and an answer for each `@` mention of your agent. A mention can ask for work: `@Hana's Claude Code review PR 42`, `… the changes in feat/retry against main`, or `… src/token.ts`. With **auto** on (the default; a banner in the UI says so), Pearcoder sends its replies after a secret scan. Turn auto off per session in the UI or with `pearcoder agent auto off`: then you let your agent handle each item, and each reply waits for your Send. `/pearcoder:listen once` handles what's waiting and stops. Without the listener, answer a mention yourself with `/pearcoder:discuss <id>` (your agent drafts it) or `pearcoder say --reply <id> "…"`.
+Want your agent to keep up on its own? Run `/pearcoder:listen` in Claude Code. While it runs, it drafts a finding for each new review request and an answer for each `@` mention of your agent. A mention can ask for work: `@Hana's Claude Code review PR 42`, `… the changes in feat/retry against main`, or `… src/token.ts`. `/pearcoder:listen once` handles what's waiting and stops. Without the listener, answer a mention yourself with `/pearcoder:discuss <id>` (your agent drafts it) or `pearcoder say --reply <id> "…"`.
+
+Your agent has two auto modes per session (the UI's agent bar, or `pearcoder agent auto mine|others on|off`):
+
+- **Mine**, on by default: your own messages and tasks go straight to your agent, and Pearcoder sends its answers after a secret scan.
+- **Others**, off by default: other people's mentions, requests and tasks wait for you. Approve one, decline it, or rewrite it and approve your version (`pearcoder agent allow <id> --text "…"`). Your agent reads your version, and the session only sees "approved with edits". Turning it on lets anyone in the session make your agent answer unseen; the banner says so.
+
+### Build together
+
+Tasks say who does what: `pearcoder task "Retry on 503" --to Hana`, or `--to me --agent claude` to give it to your own agent (also in the UI: "Create a task"). Run `/pearcoder:dev` in Claude Code and your agent works on your own items: what you @mention it with, tasks you gave it, or someone's item you rewrote and approved. It edits the repository and pushes a branch through `git_commit_push`. That tool never pushes `main`, `master`, the default branch or branches you protect. It never forces, runs with git hooks off, and refuses secrets and oversized changes. The session then sees "your agent pushed `pearcoder/retry` @ `abc1234`". Code itself never goes through Pearcoder: people fetch and review the commit with git, as with any colleague's branch. Everyone sees what each agent is doing (waiting for its owner, working, done), never what it reads or writes. `pearcoder agent stop <id>` (or Stop in the UI) ends a run's work on an item.
 
 Nobody's agent ever starts because someone else asked. Requests and mentions only show up in people's inboxes.
 

@@ -86,19 +86,53 @@ export interface ReplyPayload {
   reply_to: string;
 }
 
+export interface CodeRefPayload {
+  repo: { name: string; url?: string };
+  branch: string;
+  commit: string;
+  base?: string;
+  summary: string;
+  task?: string;
+}
+
 interface DraftBase {
   id: string;
   session_id: string;
   status: 'draft' | 'published' | 'discarded';
   created_at: string;
   source: { via: string; harness?: string };
+  /** The item this draft answers; `by_owner` when that is the owner's own text. */
+  trigger?: { item: string; by_owner: boolean };
 }
 
 export type Draft =
   | (DraftBase & { kind: 'finding'; payload: FindingPayload })
-  | (DraftBase & { kind: 'reply'; payload: ReplyPayload });
+  | (DraftBase & { kind: 'reply'; payload: ReplyPayload })
+  | (DraftBase & { kind: 'code_ref'; payload: CodeRefPayload });
 
-export type DraftPayload = FindingPayload | ReplyPayload;
+export type DraftPayload = FindingPayload | ReplyPayload | CodeRefPayload;
+
+/** The owner's agent settings for a session (ADR-0007). */
+export interface AgentPolicy {
+  /** The owner's own messages and tasks go straight to their agent. */
+  mine: boolean;
+  /** Everyone else's go to it without the owner approving each one. */
+  others: boolean;
+  /** The session sees what the agent is doing (states only). */
+  share_status: boolean;
+}
+
+/** Something aimed at the owner's agent, and where it stands. */
+export interface AgentItemView {
+  id: string;
+  kind: 'mention' | 'request' | 'task';
+  from: string;
+  by_owner: boolean;
+  gate: 'auto' | 'approved' | 'edited' | 'waiting' | 'declined';
+  edited_text?: string;
+  state: 'open' | 'working' | 'handled';
+  flow?: 'listen' | 'dev';
+}
 
 export interface SecretFinding {
   kind: string;
@@ -157,11 +191,25 @@ export const api = {
   events: (id: string) => call<{ events: WireEvent[] }>('GET', `/api/sessions/${id}/events`),
   forgetSession: (id: string) =>
     call<{ forgotten: string }>('POST', `/api/sessions/${id}/forget`, {}),
-  agentPolicy: (id: string) => call<{ auto: boolean }>('GET', `/api/sessions/${id}/agent-policy`),
-  setAgentPolicy: (id: string, auto: boolean) =>
-    call<{ auto: boolean }>('POST', `/api/sessions/${id}/agent-policy`, { auto }),
-  allowAgent: (id: string, event: string) =>
-    call<{ allowed: string }>('POST', `/api/sessions/${id}/agent-allow`, { event }),
+  agentPolicy: (id: string) => call<AgentPolicy>('GET', `/api/sessions/${id}/agent-policy`),
+  setAgentMode: (id: string, mode: 'mine' | 'others', auto: boolean) =>
+    call<AgentPolicy>('POST', `/api/sessions/${id}/agent-policy`, { mode, auto }),
+  setShareStatus: (id: string, share_status: boolean) =>
+    call<AgentPolicy>('POST', `/api/sessions/${id}/agent-policy`, { share_status }),
+  agentItems: (id: string) =>
+    call<{ items: AgentItemView[]; runs: { flow: string; harness: string }[] }>(
+      'GET',
+      `/api/sessions/${id}/agent-items`,
+    ),
+  allowAgent: (id: string, event: string, text?: string) =>
+    call<{ allowed: string }>('POST', `/api/sessions/${id}/agent-allow`, {
+      event,
+      ...(text && { text }),
+    }),
+  declineAgent: (id: string, event: string) =>
+    call<{ declined: string }>('POST', `/api/sessions/${id}/agent-decline`, { event }),
+  stopAgent: (id: string, event: string) =>
+    call<{ stopped: boolean }>('POST', `/api/sessions/${id}/agent-stop`, { event }),
   say: (id: string, text: string) =>
     call<{ sequence: number }>('POST', `/api/sessions/${id}/messages`, { text }),
 };
