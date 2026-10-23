@@ -22,6 +22,10 @@ mkdirSync(out, { recursive: true });
 const t = (p) => mkdtempSync(join(tmpdir(), p));
 const W = 960;
 const H = 720;
+// DEMO_SCALE=2 records at twice the resolution; DEMO_CLEAN=1 leaves out the captions (for the
+// launch video, which adds its own).
+const SCALE = Number(process.env.DEMO_SCALE ?? 1);
+const CLEAN = process.env.DEMO_CLEAN === '1';
 
 // Hana hosts; Alice joins. Both attached Claude Code, so each sees the other's agent.
 const hanaHome = t('demo-hana-');
@@ -92,9 +96,18 @@ const aliceNode = await startLocalNode({ home: aliceHome, identity: alice });
 const browser = await chromium.launch();
 const open = async (who) => {
   const context = await browser.newContext({
-    viewport: { width: W, height: H },
-    recordVideo: { dir: join(out, `raw-${who}`), size: { width: W, height: H } },
+    // Recordings ignore deviceScaleFactor, so a sharper recording is a bigger viewport with the
+    // page zoomed to keep the same layout.
+    viewport: { width: W * SCALE, height: H * SCALE },
+    recordVideo: { dir: join(out, `raw-${who}`), size: { width: W * SCALE, height: H * SCALE } },
   });
+  if (SCALE !== 1) {
+    await context.addInitScript((zoom) => {
+      document.addEventListener('DOMContentLoaded', () => {
+        document.documentElement.style.zoom = zoom;
+      });
+    }, String(SCALE));
+  }
   const started = Date.now();
   const page = await context.newPage();
   return { context, page, started };
@@ -108,6 +121,7 @@ await alicePage.goto(aliceNode.openUrl);
 
 // A caption bar and a "whose screen" label, drawn into each page.
 const caption = async (page, who, text) =>
+  !CLEAN &&
   page.evaluate(
     ([who, text]) => {
       let bar = document.getElementById('demo-caption');
@@ -155,6 +169,7 @@ await hanaPage.getByLabel('Task title').pressSequentially('Stop retrying forever
 await hanaPage.getByLabel('Assign to').selectOption({ label: "Alice's Claude Code" });
 await pause(900);
 await hanaPage.getByRole('button', { name: 'Create task' }).click();
+mark('taskCreated');
 await alicePage.getByText('This asks your Claude Code. It waits for you.').waitFor();
 await pause(1200);
 await caption(hanaPage, 'Hana', "…and sees it's waiting for Alice.");
@@ -175,7 +190,9 @@ await box.pressSequentially(
   { delay: 18 },
 );
 await pause(600);
+mark('editStart');
 await alicePage.getByRole('button', { name: 'Approve my version' }).click();
+mark('approved');
 await hanaPage
   .getByText("Alice's Claude Code: approved with edits by Alice")
   .waitFor({ timeout: 15_000 });
@@ -265,6 +282,9 @@ writeFileSync(
     {
       hana: { file: video('hana'), start: offset(hanaView) },
       alice: { file: video('alice'), start: offset(aliceView) },
+      taskCreated: (marks.taskCreated - marks.start) / 1000,
+      editStart: (marks.editStart - marks.start) / 1000,
+      approved: (marks.approved - marks.start) / 1000,
       agentStart: (marks.agentStart - marks.start) / 1000,
       agentEnd: (marks.agentEnd - marks.start) / 1000,
       end: (marks.end - marks.start) / 1000,
