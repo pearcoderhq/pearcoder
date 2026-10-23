@@ -21,7 +21,7 @@ const ff = (...args) => execFileSync('ffmpeg', ['-loglevel', 'error', '-y', ...a
 // The script. `card` scenes are animated text; `clip` scenes are UI moments from the recording
 // (times on that person's timeline, in seconds after the demo started). `say` is the voiceover.
 const SCENES = [
-  { card: 'hook', d: 1.8, say: 'Your whole team codes with AI agents.' },
+  { card: 'hook', d: 1.8, from: 0.6, say: 'Your whole team codes with AI agents.' },
   { card: 'alone', d: 1.9, say: 'But every agent works alone.' },
   { card: 'logo', d: 2.2, say: 'Pearcoder puts them in one session.' },
   {
@@ -129,7 +129,8 @@ for (const [i, scene] of SCENES.entries()) {
     await frame(`<div class="wrap">${CARDS[scene.card].replaceAll('LOGO', logo)}</div>`);
     const n = Math.round(scene.d * FPS);
     for (let f = 0; f < n; f++) {
-      await seek(f / FPS);
+      // `from` skips a card's entrance, so the video's first frame (its thumbnail) is readable.
+      await seek((scene.from ?? 0) + f / FPS);
       await page.screenshot({ path: join(frames, `${String(f).padStart(4, '0')}.png`) });
     }
     ff(
@@ -192,7 +193,7 @@ for (const [i, scene] of SCENES.entries()) {
 }
 await browser.close();
 
-// Picture: hard cuts on the beat, with a short fade at the very start and end.
+// Picture: hard cuts on the beat, and a short fade out at the end (no fade in: the first frame is the thumbnail).
 const total = parts.reduce((sum, p) => sum + p.d, 0);
 const list = join(out, 'parts.txt');
 writeFileSync(list, parts.map((p) => `file '${p.file}'`).join('\n'));
@@ -205,7 +206,7 @@ ff(
   '-i',
   list,
   '-vf',
-  `fade=in:0:12,fade=out:st=${total - 0.6}:d=0.6`,
+  `fade=out:st=${total - 0.6}:d=0.6`,
   '-c:v',
   'libx264',
   '-crf',
@@ -293,6 +294,9 @@ if (musicArg) {
 }
 
 // Loudness for social feeds (-14 LUFS). A voice ducks the music only lightly, so it stays audible.
+// A still for platforms that take a custom thumbnail: the first frame.
+ff('-i', picture, '-frames:v', '1', join(out, 'pearcoder-launch-thumbnail.png'));
+
 const final = join(out, 'pearcoder-launch.mp4');
 const loud = 'loudnorm=I=-14:TP=-1.5:LRA=11';
 const audio =
