@@ -6,6 +6,7 @@ import {
   agentItems,
   claim,
   claimedItems,
+  claimOf,
   countPush,
   createDraft,
   draftTitle,
@@ -263,6 +264,26 @@ export function createPearcoderMcpServer(options: PearcoderMcpOptions): McpServe
       }
     };
 
+  // Items this process's dev run took with task_wait. While one is open, the tools that return
+  // other people's words refuse: an agent with write access never reads them (ADR-0007). This is
+  // enforced here, not only by the subagent's tool list, because Codex can't restrict its tools.
+  const devItems = new Set<string>();
+  const holdsDevItem = () =>
+    [...devItems].some((key) => {
+      const [session, item] = key.split('\u0000');
+      return claimOf(options.home, session ?? '', item ?? '') !== undefined;
+    });
+  const othersContent =
+    <A>(fn: (args: A) => Promise<Text>) =>
+    async (args: A): Promise<Text> => {
+      if (holdsDevItem()) {
+        throw new Error(
+          "dev mode is working on one of your owner's items: tools that return other people's messages are off until it finishes. Use task_wait for the next item.",
+        );
+      }
+      return fn(args);
+    };
+
   const renderPackage = (event: SequencedEvent, author: string): string => {
     const p = event.payload as Record<string, unknown>;
     const integrity =
@@ -319,14 +340,17 @@ export function createPearcoderMcpServer(options: PearcoderMcpOptions): McpServe
       inputSchema: { session: z.string().optional() },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    guard(async ({ session }) => {
-      const { items, unreachable } = await openItems(session);
-      const shown = items.filter((i) => gateOf(options.home, i.item) !== 'declined');
-      return text(
-        (shown.length ? shown.map((i) => i.block).join('\n\n') : 'No open requests or mentions.') +
-          unreachableNote(unreachable),
-      );
-    }),
+    guard(
+      othersContent(async ({ session }) => {
+        const { items, unreachable } = await openItems(session);
+        const shown = items.filter((i) => gateOf(options.home, i.item) !== 'declined');
+        return text(
+          (shown.length
+            ? shown.map((i) => i.block).join('\n\n')
+            : 'No open requests or mentions.') + unreachableNote(unreachable),
+        );
+      }),
+    ),
   );
 
   server.registerTool(
@@ -340,38 +364,40 @@ export function createPearcoderMcpServer(options: PearcoderMcpOptions): McpServe
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    guard(async ({ session, timeout_seconds }) => {
-      const deadline = Date.now() + (timeout_seconds ?? 40) * 1000;
-      heartbeat(options.home, 'listen', harness());
-      for (;;) {
-        const { items, unreachable } = await openItems(session);
-        const { fresh: all, waiting } = ready(items);
-        // While /pearcoder:dev runs, the owner's own items go to it: it can change code.
-        const devRunning = isRunActive(options.home, 'dev');
-        const fresh = devRunning
-          ? all.filter((i) => ownerTextOf(options.home, i.item) === undefined)
-          : all;
-        if (fresh.length) {
-          for (const { item } of fresh) {
-            claim(options.home, {
-              session: item.session_id,
-              item: item.id,
-              flow: 'listen',
-              harness: harness(),
-            });
+    guard(
+      othersContent(async ({ session, timeout_seconds }) => {
+        const deadline = Date.now() + (timeout_seconds ?? 40) * 1000;
+        heartbeat(options.home, 'listen', harness());
+        for (;;) {
+          const { items, unreachable } = await openItems(session);
+          const { fresh: all, waiting } = ready(items);
+          // While /pearcoder:dev runs, the owner's own items go to it: it can change code.
+          const devRunning = isRunActive(options.home, 'dev');
+          const fresh = devRunning
+            ? all.filter((i) => ownerTextOf(options.home, i.item) === undefined)
+            : all;
+          if (fresh.length) {
+            for (const { item } of fresh) {
+              claim(options.home, {
+                session: item.session_id,
+                item: item.id,
+                flow: 'listen',
+                harness: harness(),
+              });
+            }
+            return text(
+              `${fresh.map((i) => i.block).join('\n\n')}\n\nHandle each item once: a finding_draft for a review request, a reply_draft for a mention or a task. Then call inbox_wait again.${unreachableNote(unreachable)}`,
+            );
           }
-          return text(
-            `${fresh.map((i) => i.block).join('\n\n')}\n\nHandle each item once: a finding_draft for a review request, a reply_draft for a mention or a task. Then call inbox_wait again.${unreachableNote(unreachable)}`,
-          );
+          if (Date.now() >= deadline) {
+            return text(
+              `Nothing new.${waitingNote(waiting.length)} Call inbox_wait again to keep listening, unless you have handled 10 items in this run or your owner asked you to stop.`,
+            );
+          }
+          await new Promise((resolve) => setTimeout(resolve, 3000));
         }
-        if (Date.now() >= deadline) {
-          return text(
-            `Nothing new.${waitingNote(waiting.length)} Call inbox_wait again to keep listening, unless you have handled 10 items in this run or your owner asked you to stop.`,
-          );
-        }
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-      }
-    }),
+      }),
+    ),
   );
 
   server.registerTool(
@@ -399,6 +425,7 @@ export function createPearcoderMcpServer(options: PearcoderMcpOptions): McpServe
             home: options.home,
             ...(options.gitBin && { gitBin: options.gitBin }),
           }).catch(() => undefined);
+          devItems.add(`${next.item.session_id}\u0000${next.item.id}`);
           claim(options.home, {
             session: next.item.session_id,
             item: next.item.id,
@@ -561,17 +588,23 @@ export function createPearcoderMcpServer(options: PearcoderMcpOptions): McpServe
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
-    guard(async ({ pr }) => {
-      const built = await buildPullRequestPackage({
-        cwd: options.cwd ?? process.cwd(),
-        pr,
-        ...(options.ghBin && { ghBin: options.ghBin }),
-      });
-      const p = built.payload as { title?: string; body?: string; repo?: { url?: string } };
-      return text(
-        fence(p.repo?.url ?? 'GitHub', `pull request ${pr}`, `${p.title ?? ''}\n\n${p.body ?? ''}`),
-      );
-    }),
+    guard(
+      othersContent(async ({ pr }) => {
+        const built = await buildPullRequestPackage({
+          cwd: options.cwd ?? process.cwd(),
+          pr,
+          ...(options.ghBin && { ghBin: options.ghBin }),
+        });
+        const p = built.payload as { title?: string; body?: string; repo?: { url?: string } };
+        return text(
+          fence(
+            p.repo?.url ?? 'GitHub',
+            `pull request ${pr}`,
+            `${p.title ?? ''}\n\n${p.body ?? ''}`,
+          ),
+        );
+      }),
+    ),
   );
 
   server.registerTool(
@@ -582,26 +615,28 @@ export function createPearcoderMcpServer(options: PearcoderMcpOptions): McpServe
       inputSchema: { request_id: z.string() },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    guard(async ({ request_id }) => {
-      const { record, events, event } = await findEvent(request_id, 'request.created');
-      const name = nameOf(events);
-      const request = requestsOf(events).find((r) => r.id === event.id);
-      const parts = [
-        fence(
-          name(event.actor_user_id),
-          `request ${event.id} in ${record.session_name}`,
-          `${request?.kind}: ${request?.title}\n${request?.body ?? ''}`,
-        ),
-      ];
-      if (request?.context_package) {
-        const pkg = events.find((e) => e.id === request.context_package);
-        if (pkg) parts.push(renderPackage(pkg, name(pkg.actor_user_id)));
-      }
-      parts.push(
-        `When done, save each finding with finding_draft (session "${record.session_name}", request "${event.id}").`,
-      );
-      return text(parts.join('\n\n'));
-    }),
+    guard(
+      othersContent(async ({ request_id }) => {
+        const { record, events, event } = await findEvent(request_id, 'request.created');
+        const name = nameOf(events);
+        const request = requestsOf(events).find((r) => r.id === event.id);
+        const parts = [
+          fence(
+            name(event.actor_user_id),
+            `request ${event.id} in ${record.session_name}`,
+            `${request?.kind}: ${request?.title}\n${request?.body ?? ''}`,
+          ),
+        ];
+        if (request?.context_package) {
+          const pkg = events.find((e) => e.id === request.context_package);
+          if (pkg) parts.push(renderPackage(pkg, name(pkg.actor_user_id)));
+        }
+        parts.push(
+          `When done, save each finding with finding_draft (session "${record.session_name}", request "${event.id}").`,
+        );
+        return text(parts.join('\n\n'));
+      }),
+    ),
   );
 
   server.registerTool(
@@ -612,10 +647,12 @@ export function createPearcoderMcpServer(options: PearcoderMcpOptions): McpServe
       inputSchema: { package_id: z.string() },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    guard(async ({ package_id }) => {
-      const { events, event } = await findEvent(package_id, 'context_package.published');
-      return text(renderPackage(event, nameOf(events)(event.actor_user_id)));
-    }),
+    guard(
+      othersContent(async ({ package_id }) => {
+        const { events, event } = await findEvent(package_id, 'context_package.published');
+        return text(renderPackage(event, nameOf(events)(event.actor_user_id)));
+      }),
+    ),
   );
 
   server.registerTool(
@@ -629,25 +666,27 @@ export function createPearcoderMcpServer(options: PearcoderMcpOptions): McpServe
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    guard(async ({ session, last }) => {
-      const record = pick(session);
-      const events = await history(record);
-      const name = nameOf(events);
-      const shown = events
-        .filter((e) => ['message.created', 'request.created', 'review.finding'].includes(e.type))
-        .slice(-last)
-        .map((e) => {
-          const p = e.payload as Record<string, unknown>;
-          const body =
-            e.type === 'message.created'
-              ? String(p.text)
-              : e.type === 'request.created'
-                ? `[request ${e.id}] ${String(p.kind)}: ${String(p.title)}`
-                : `[finding ${e.id}] ${String(p.severity)}: ${String(p.title)}\n${String(p.body)}`;
-          return fence(name(e.actor_user_id), `${e.type} #${e.sequence}`, body);
-        });
-      return text(shown.length ? shown.join('\n\n') : 'Nothing has been said yet.');
-    }),
+    guard(
+      othersContent(async ({ session, last }) => {
+        const record = pick(session);
+        const events = await history(record);
+        const name = nameOf(events);
+        const shown = events
+          .filter((e) => ['message.created', 'request.created', 'review.finding'].includes(e.type))
+          .slice(-last)
+          .map((e) => {
+            const p = e.payload as Record<string, unknown>;
+            const body =
+              e.type === 'message.created'
+                ? String(p.text)
+                : e.type === 'request.created'
+                  ? `[request ${e.id}] ${String(p.kind)}: ${String(p.title)}`
+                  : `[finding ${e.id}] ${String(p.severity)}: ${String(p.title)}\n${String(p.body)}`;
+            return fence(name(e.actor_user_id), `${e.type} #${e.sequence}`, body);
+          });
+        return text(shown.length ? shown.join('\n\n') : 'Nothing has been said yet.');
+      }),
+    ),
   );
 
   server.registerTool(
@@ -657,27 +696,29 @@ export function createPearcoderMcpServer(options: PearcoderMcpOptions): McpServe
       inputSchema: { session: z.string().optional(), request_id: z.string().optional() },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    guard(async ({ session, request_id }) => {
-      const record = pick(session);
-      const events = await history(record);
-      const name = nameOf(events);
-      const findings = events.filter(
-        (e) => e.type === 'review.finding' && (!request_id || e.payload.request === request_id),
-      );
-      return text(
-        findings.length
-          ? findings
-              .map((e) =>
-                fence(
-                  name(e.actor_user_id),
-                  `finding ${e.id}`,
-                  `${String(e.payload.severity)}: ${String(e.payload.title)}\n${String(e.payload.body)}`,
-                ),
-              )
-              .join('\n\n')
-          : 'No findings yet.',
-      );
-    }),
+    guard(
+      othersContent(async ({ session, request_id }) => {
+        const record = pick(session);
+        const events = await history(record);
+        const name = nameOf(events);
+        const findings = events.filter(
+          (e) => e.type === 'review.finding' && (!request_id || e.payload.request === request_id),
+        );
+        return text(
+          findings.length
+            ? findings
+                .map((e) =>
+                  fence(
+                    name(e.actor_user_id),
+                    `finding ${e.id}`,
+                    `${String(e.payload.severity)}: ${String(e.payload.title)}\n${String(e.payload.body)}`,
+                  ),
+                )
+                .join('\n\n')
+            : 'No findings yet.',
+        );
+      }),
+    ),
   );
 
   server.registerTool(
