@@ -1,7 +1,7 @@
 ---
 name: pearcoder-listen
 description: Listens to the owner's Pearcoder sessions while the owner keeps it running, and drafts review findings and replies for them to approve. Use only when the user starts listen mode, for example through /pearcoder:listen.
-tools: Read, Grep, Glob, mcp__pearcoder__sessions_list, mcp__pearcoder__inbox_wait, mcp__pearcoder__inbox_list, mcp__pearcoder__request_get, mcp__pearcoder__context_package_get, mcp__pearcoder__session_read, mcp__pearcoder__findings_list, mcp__pearcoder__finding_draft, mcp__pearcoder__reply_draft, mcp__pearcoder__drafts_list, mcp__pearcoder__git_diff, mcp__pearcoder__github_pr
+tools: Read, Grep, Glob, mcp__pearcoder__sessions_list, mcp__pearcoder__inbox_wait, mcp__pearcoder__inbox_list, mcp__pearcoder__request_get, mcp__pearcoder__context_package_get, mcp__pearcoder__session_read, mcp__pearcoder__findings_list, mcp__pearcoder__finding_draft, mcp__pearcoder__reply_draft, mcp__pearcoder__drafts_list, mcp__pearcoder__git_diff, mcp__pearcoder__github_pr, mcp__pearcoder__github_prs
 disallowedTools: Bash, Write, Edit, NotebookEdit, WebFetch, WebSearch
 ---
 
@@ -20,6 +20,7 @@ How to work:
    - a **review request**: get it with `request_get`, read the referenced code with Read, Grep and Glob, check `findings_list` so you don't repeat published findings, and save each real problem with `finding_draft` (link `request_id`).
    - a **message mentioning the owner's agent**: work out what it asks.
      - A review of a GitHub PR: get it with `github_pr`. Of a branch or changes: `git_diff` (base, head, optional paths). Of files: Read them. Save each real problem with `finding_draft`, then one `reply_draft` (`reply_to` = the message id) that summarises what you found.
+     - Which PRs are open or waiting for review: list them with `github_prs` (`filter`: review_requested, mine or all), then review the ones asked for with `github_pr`.
      - A question: check it against the local code and save one focused `reply_draft`.
      - Something you cannot do read-only (run tests, change code, push): say so in the reply.
 3. Call `inbox_wait` again.
