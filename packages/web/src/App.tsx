@@ -146,6 +146,11 @@ export function App() {
           sessions={sessions}
           activeId={activeId}
           onSelect={setActiveId}
+          onForget={async (id) => {
+            await api.forgetSession(id).catch(() => undefined);
+            if (activeId === id) setActiveId(null);
+            await refresh().catch(() => undefined);
+          }}
           people={activePeople}
           me={me}
           inbox={inbox}
@@ -227,6 +232,7 @@ function Sidebar(props: {
   sessions: SessionView[];
   activeId: string | null;
   onSelect: (id: string) => void;
+  onForget: (id: string) => Promise<void>;
   people: Person[];
   me: Me | null;
   inbox: { event: WireEvent; session: SessionView }[];
@@ -238,21 +244,43 @@ function Sidebar(props: {
           Sessions
         </h2>
         <ul className="space-y-1">
-          {props.sessions.map((s) => (
-            <li key={s.session_id}>
-              <button
-                type="button"
-                onClick={() => props.onSelect(s.session_id)}
-                className={`w-full truncate rounded-lg px-3 py-2 text-left text-sm ${
-                  s.session_id === props.activeId
-                    ? 'bg-pear-soft font-semibold text-ink dark:bg-pear/30 dark:text-white'
-                    : 'hover:bg-black/5 dark:hover:bg-white/5'
-                }`}
-              >
-                # {s.session_name}
-              </button>
-            </li>
-          ))}
+          {props.sessions.map((s) => {
+            const ended = s.status === 'unreachable' || s.status === 'stopped';
+            // Same-named sessions (a host restarted without --persist) get their short id.
+            const twin = props.sessions.some(
+              (o) => o.session_id !== s.session_id && o.session_name === s.session_name,
+            );
+            return (
+              <li key={s.session_id} className="group flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => props.onSelect(s.session_id)}
+                  className={`min-w-0 flex-1 truncate rounded-lg px-3 py-2 text-left text-sm ${
+                    s.session_id === props.activeId
+                      ? 'bg-pear-soft font-semibold text-ink dark:bg-pear/30 dark:text-white'
+                      : 'hover:bg-black/5 dark:hover:bg-white/5'
+                  } ${ended ? 'text-slate-400' : ''}`}
+                >
+                  # {s.session_name}
+                  {twin && (
+                    <span className="text-xs text-slate-400"> {s.session_id.slice(2, 8)}</span>
+                  )}
+                  {ended && <span className="ml-1 text-xs">· ended</span>}
+                </button>
+                {ended && (
+                  <button
+                    type="button"
+                    title="Forget this session on this device"
+                    aria-label={`Forget ${s.session_name}`}
+                    onClick={() => void props.onForget(s.session_id)}
+                    className="rounded px-1.5 py-1 text-xs text-slate-400 hover:bg-black/5 hover:text-red-600 dark:hover:bg-white/5"
+                  >
+                    Forget
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </section>
       <section>
