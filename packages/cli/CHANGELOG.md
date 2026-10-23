@@ -1,5 +1,11 @@
 # pearcoder
 
+## 0.4.1
+
+### Patch Changes
+
+- Mentioning your own agent (`@you's Claude Code …`) now reaches it: listen mode picks it up and answers. Before, messages you wrote yourself were ignored.
+
 ## 0.4.0
 
 ### Minor Changes
