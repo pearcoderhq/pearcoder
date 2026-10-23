@@ -193,8 +193,10 @@ describe('git_commit_push', () => {
     const hooks = join(repo, '.husky');
     mkdirSync(hooks);
     const marker = join(repo, 'hook-ran');
-    writeFileSync(join(hooks, 'pre-commit'), `#!/bin/sh\ntouch "${marker}"\n`);
-    writeFileSync(join(hooks, 'pre-push'), `#!/bin/sh\ntouch "${marker}"\n`);
+    // Relative: hooks run in the repository root, and an absolute temp path under the home folder
+    // (Windows runners) would rightly trip the secret scan.
+    writeFileSync(join(hooks, 'pre-commit'), '#!/bin/sh\ntouch hook-ran\n');
+    writeFileSync(join(hooks, 'pre-push'), '#!/bin/sh\ntouch hook-ran\n');
     chmodSync(join(hooks, 'pre-commit'), 0o755);
     chmodSync(join(hooks, 'pre-push'), 0o755);
     git('config', 'core.hooksPath', '.husky');
@@ -217,8 +219,8 @@ describe('git_commit_push', () => {
         summary: 'Token ttl is now one hour',
         new_branch: 'feat/ttl',
       });
-      expect(pushed.isError).toBe(false);
       expect(pushed.text).toMatch(/^Pushed feat\/ttl at [0-9a-f]{12}/);
+      expect(pushed.isError).toBe(false);
       expect(existsSync(marker)).toBe(false);
       const commit = git('rev-parse', 'HEAD');
       expect(

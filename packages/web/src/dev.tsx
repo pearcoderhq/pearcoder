@@ -483,9 +483,20 @@ export function TaskForm({
 
 /** Web address of a commit on a known HTTPS forge, or nothing. */
 function commitUrl(url: string | undefined, commit: string): string | undefined {
-  if (!url || !/^https:\/\/(github\.com|gitlab\.com|codeberg\.org)\//.test(url)) return undefined;
-  const base = url.replace(/\.git$/, '');
-  return url.includes('gitlab.com') ? `${base}/-/commit/${commit}` : `${base}/commit/${commit}`;
+  if (!url) return undefined;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return undefined;
+  }
+  // Exact host match on the parsed URL: a substring check would accept gitlab.com.evil.example.
+  const forges = ['github.com', 'gitlab.com', 'codeberg.org'];
+  if (parsed.protocol !== 'https:' || !forges.includes(parsed.hostname)) return undefined;
+  const base = `https://${parsed.hostname}${parsed.pathname.replace(/\.git$/, '').replace(/\/$/, '')}`;
+  return parsed.hostname === 'gitlab.com'
+    ? `${base}/-/commit/${commit}`
+    : `${base}/commit/${commit}`;
 }
 
 /** "Bob pushed abc1234": where the code is, never the code. */
