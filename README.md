@@ -69,7 +69,7 @@ Then the review loop:
    pearcoder github-review 42               # preview the findings as one GitHub PR review; add --post to post it
    ```
 
-Want your agent to keep up on its own? Run `/pearcoder:listen` in Claude Code. While it runs, it drafts a finding for each new review request and an answer for each `@` mention of your agent. With **auto** on (the default; a banner in the UI says so), Pearcoder sends its replies after a secret scan. Turn auto off per session in the UI or with `pearcoder agent auto off`: then you let your agent handle each item, and each reply waits for your Send. `/pearcoder:listen once` handles what's waiting and stops. Without the listener, answer a mention yourself with `/pearcoder:discuss <id>` (your agent drafts it) or `pearcoder say --reply <id> "…"`.
+Want your agent to keep up on its own? Run `/pearcoder:listen` in Claude Code. While it runs, it drafts a finding for each new review request and an answer for each `@` mention of your agent. A mention can ask for work: `@Hana's Claude Code review PR 42`, `… the changes in feat/retry against main`, or `… src/token.ts`. With **auto** on (the default; a banner in the UI says so), Pearcoder sends its replies after a secret scan. Turn auto off per session in the UI or with `pearcoder agent auto off`: then you let your agent handle each item, and each reply waits for your Send. `/pearcoder:listen once` handles what's waiting and stops. Without the listener, answer a mention yourself with `/pearcoder:discuss <id>` (your agent drafts it) or `pearcoder say --reply <id> "…"`.
 
 Nobody's agent ever starts because someone else asked. Requests and mentions only show up in people's inboxes.
 
