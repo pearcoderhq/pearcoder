@@ -1,5 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createDraft, draftTitle, listDrafts } from '@pearcoderhq/bridge';
+import { createDraft, draftTitle, isAllowed, isAuto, listDrafts } from '@pearcoderhq/bridge';
 import {
   inboxOf,
   listRecords,
@@ -113,7 +113,7 @@ export function createPearcoderMcpServer(options: PearcoderMcpOptions): McpServe
   // Everything waiting for the owner or their agent, fenced.
   const openItems = async (session?: string) => {
     const records = session ? [pick(session)] : sessions();
-    const items: { id: string; byAgent: boolean; block: string }[] = [];
+    const items: { id: string; sessionId: string; byAgent: boolean; block: string }[] = [];
     const { ok, unreachable } = await eachReachable(records);
     if (session && unreachable.length) {
       throw new Error(`${session} is not reachable: is its host running?`);
@@ -124,6 +124,7 @@ export function createPearcoderMcpServer(options: PearcoderMcpOptions): McpServe
         if (!m.agent) continue;
         items.push({
           id: m.id,
+          sessionId: record.session_id,
           byAgent: m.by_agent,
           block: fence(
             m.from_name,
@@ -135,6 +136,7 @@ export function createPearcoderMcpServer(options: PearcoderMcpOptions): McpServe
       for (const r of inboxOf(events, options.identity.userId)) {
         items.push({
           id: r.id,
+          sessionId: record.session_id,
           byAgent: false,
           block: fence(
             r.from_name,
@@ -271,7 +273,12 @@ export function createPearcoderMcpServer(options: PearcoderMcpOptions): McpServe
       for (;;) {
         const drafted = draftedTargets();
         const { items, unreachable } = await openItems(session);
-        const fresh = items.filter((i) => !i.byAgent && !drafted.has(i.id));
+        const open = items.filter((i) => !i.byAgent && !drafted.has(i.id));
+        // With auto off for a session, an item waits until the owner lets the agent handle it.
+        const fresh = open.filter(
+          (i) => isAuto(options.home, i.sessionId) || isAllowed(options.home, i.sessionId, i.id),
+        );
+        const waiting = open.length - fresh.length;
         if (fresh.length) {
           return text(
             `${fresh.map((i) => i.block).join('\n\n')}\n\nHandle each item once: a finding_draft for a review request, a reply_draft for a mention. Then call inbox_wait again.${unreachableNote(unreachable)}`,
@@ -279,7 +286,7 @@ export function createPearcoderMcpServer(options: PearcoderMcpOptions): McpServe
         }
         if (Date.now() >= deadline) {
           return text(
-            'Nothing new. Call inbox_wait again to keep listening, unless you have handled 10 items in this run or your owner asked you to stop.',
+            `Nothing new.${waiting ? ` ${waiting} item${waiting === 1 ? ' waits' : 's wait'} for your owner to allow it in Pearcoder.` : ''} Call inbox_wait again to keep listening, unless you have handled 10 items in this run or your owner asked you to stop.`,
           );
         }
         await new Promise((resolve) => setTimeout(resolve, 3000));

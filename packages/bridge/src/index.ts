@@ -19,4 +19,13 @@ export {
   type RunningLocalNode,
   startLocalNode,
 } from './local-node.js';
+export {
+  type AgentPolicy,
+  allowItem,
+  autoSince,
+  isAllowed,
+  isAuto,
+  readPolicy,
+  setAuto,
+} from './policy.js';
 export { agentIdFor, PublishBlockedError, type PublishOptions, publishDraft } from './publish.js';

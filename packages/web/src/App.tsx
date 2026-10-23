@@ -374,6 +374,20 @@ function Conversation({
   onDrafts: () => void;
   onEditDrafts: () => void;
 }) {
+  // The owner's per-session agent setting (ADR-0006); on unless they turned it off.
+  const [auto, setAuto] = useState<boolean | null>(null);
+  useEffect(() => {
+    api
+      .agentPolicy(session.session_id)
+      .then((p) => setAuto(p.auto))
+      .catch(() => setAuto(null));
+  }, [session.session_id]);
+  const myAgents = me
+    ? (participants(events).find((p) => p.userId === me.user_id)?.agents ?? [])
+    : [];
+  const toggleAuto = async (value: boolean) => {
+    setAuto((await api.setAgentPolicy(session.session_id, value)).auto);
+  };
   // The agent's pending reply drafts, shown under the message they answer.
   const replyDrafts = new Map(
     drafts
@@ -442,6 +456,29 @@ function Conversation({
 
   return (
     <>
+      {myAgents.length > 0 && auto !== null && (
+        <div
+          role="status"
+          className={`flex items-center gap-3 border-b px-8 py-2 text-sm ${
+            auto
+              ? 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100'
+              : 'border-black/5 text-slate-500 dark:border-white/10'
+          }`}
+        >
+          <span className="flex-1">
+            {auto
+              ? `Auto is on: while /pearcoder:listen runs, your ${agentLabel(myAgents[0] ?? '')} answers @mentions and review requests here, and Pearcoder sends its replies without asking you (after a secret scan).`
+              : `Auto is off: your ${agentLabel(myAgents[0] ?? '')} waits for you to let it handle each item, and its replies wait for Send.`}
+          </span>
+          <button
+            type="button"
+            onClick={() => void toggleAuto(!auto)}
+            className="rounded-md border border-current px-2 py-0.5 text-xs font-semibold"
+          >
+            {auto ? 'Turn off' : 'Turn on'}
+          </button>
+        </div>
+      )}
       <ol className="flex-1 space-y-1 overflow-y-auto px-8 py-6" aria-live="polite">
         {visible.map((event) =>
           event.type === 'request.created' ? (
@@ -494,6 +531,8 @@ function Conversation({
               draft={replyDrafts.get(event.id)}
               onDrafts={onDrafts}
               onEditDrafts={onEditDrafts}
+              auto={auto}
+              sessionId={session.session_id}
             />
           ),
         )}
@@ -621,6 +660,8 @@ function EventRow({
   draft,
   onDrafts,
   onEditDrafts,
+  auto = null,
+  sessionId,
 }: {
   event: WireEvent;
   name: string;
@@ -630,7 +671,10 @@ function EventRow({
   draft?: Draft | undefined;
   onDrafts?: () => void;
   onEditDrafts?: () => void;
+  auto?: boolean | null;
+  sessionId?: string;
 }) {
+  const [allowed, setAllowed] = useState(false);
   const time = new Date(event.received_at).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
@@ -645,12 +689,31 @@ function EventRow({
         {draft && <InlineDraft draft={draft} onChange={onDrafts} onEdit={onEditDrafts} />}
         {!draft && mentionedAgent(event, me) && (
           <p className="mt-1 text-xs text-slate-500">
-            This mentions your {agentLabel(mentionedAgent(event, me) ?? '')}. To draft an answer,
-            run{' '}
-            <code className="rounded bg-black/5 px-1 dark:bg-white/10">
-              /pearcoder:discuss {event.id.slice(0, 8)}
-            </code>{' '}
-            in it. The reply stays a private draft until you send it.
+            This mentions your {agentLabel(mentionedAgent(event, me) ?? '')}.{' '}
+            {auto === false && !allowed && sessionId ? (
+              <button
+                type="button"
+                className="rounded-md border px-2 py-0.5 font-semibold text-pear"
+                onClick={() =>
+                  void api
+                    .allowAgent(sessionId, event.id)
+                    .then(() => setAllowed(true))
+                    .catch(() => undefined)
+                }
+              >
+                Let my {agentLabel(mentionedAgent(event, me) ?? '')} handle this
+              </button>
+            ) : auto === false ? (
+              'Allowed: it picks this up while /pearcoder:listen runs, and its reply waits for your Send.'
+            ) : (
+              <>
+                It answers while /pearcoder:listen runs; or run{' '}
+                <code className="rounded bg-black/5 px-1 dark:bg-white/10">
+                  /pearcoder:discuss {event.id.slice(0, 8)}
+                </code>{' '}
+                in it.
+              </>
+            )}
           </p>
         )}
       </li>
