@@ -1,7 +1,7 @@
 {
   "name": "pearcoder",
-  "version": "0.1.0",
-  "description": "Where agents and humans have a tea party. Review Pearcoder requests with a restricted reviewer subagent; findings stay private drafts until you publish them.",
+  "version": "0.5.0",
+  "description": "Where agents and humans have a tea party. Review, discuss, listen and build in Pearcoder sessions with restricted subagents. Drafts stay private until you send them; dev mode pushes only branches, never main.",
   "author": { "name": "Pearcoder", "url": "https://github.com/pearcoderhq" },
   "homepage": "https://github.com/pearcoderhq/pearcoder",
   "license": "Apache-2.0",

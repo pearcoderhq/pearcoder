@@ -9,6 +9,7 @@ Pearcoder ships as one npm package, `pearcoder`. It's a single bundled file (`di
    - run `pnpm changeset version` and review the bumps and `CHANGELOG.md`;
    - commit;
    - check that `packages/cli/package.json` has the new version;
+   - set the same version in `integrations/claude-code/plugins/pearcoder/.claude-plugin/plugin.json`. Claude Code caches plugins by version, so without this `pearcoder attach` keeps the old subagents;
    - merge once all checks pass (squash).
 3. Locally: `pnpm build && pnpm --filter pearcoder smoke:pack`. CI runs the same smoke test on every PR.
 4. Create a GitHub release `vX.Y.Z` on the merged `main`, with the `CHANGELOG.md` section as notes (`gh release create vX.Y.Z --target <sha> --notes-file …`), or run the **Release** workflow by hand. The workflow uses npm trusted publishing (OIDC) to **stage** every non-private package whose version isn't on npm yet, and prints `staged with id <id>`. No npm token exists.
