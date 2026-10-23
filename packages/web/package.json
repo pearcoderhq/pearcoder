@@ -1,0 +1,43 @@
+{
+  "name": "@pearcoderhq/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pearcoder web UI, served by the local node.",
+  "license": "FSL-1.1-ALv2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pearcoderhq/pearcoder.git",
+    "directory": "packages/web"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "@pearcoderhq/source": "./node.js",
+      "types": "./node.d.ts",
+      "default": "./node.js"
+    }
+  },
+  "files": [
+    "node.js",
+    "node.d.ts",
+    "dist/app"
+  ],
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "dev": "vite",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@pearcoderhq/protocol": "workspace:*",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "tailwindcss": "4.3.3",
+    "vite": "8.3.5"
+  }
+}

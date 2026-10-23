@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm lint
+
+      - run: pnpm typecheck
+
+      - run: pnpm test
+
+      - run: pnpm build
+
+      # Installs the packed npm tarball into an empty folder and runs the real binary.
+      - run: pnpm --filter pearcoder smoke:pack
+
+  # The published CLI supports Node 22.13+ (unflagged node:sqlite); development uses Node 24.
+  node22:
+    name: runtime (node 22)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.13.0
+
+      - run: node --version && pnpm test
+
+      - run: pnpm --filter pearcoder smoke:pack
+
+  e2e:
+    name: browser e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      # The runner image already has Chrome's system libraries; `--with-deps` (apt) can stall for
+      # many minutes, so only the browser itself is installed.
+      - run: pnpm --filter @pearcoderhq/e2e exec playwright install chromium
+
+      - run: pnpm test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-results
+          path: e2e/test-results
+          retention-days: 7

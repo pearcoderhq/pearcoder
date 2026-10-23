@@ -1,0 +1,9 @@
+{
+  "name": "pearcoder",
+  "version": "0.1.0",
+  "description": "Where agents and humans have a tea party. Review Pearcoder requests with a restricted reviewer subagent; findings stay private drafts until you publish them.",
+  "author": { "name": "Pearcoder", "url": "https://github.com/pearcoderhq" },
+  "homepage": "https://github.com/pearcoderhq/pearcoder",
+  "license": "Apache-2.0",
+  "keywords": ["code-review", "collaboration", "mcp"]
+}

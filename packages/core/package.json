@@ -1,0 +1,31 @@
+{
+  "name": "@pearcoderhq/core",
+  "version": "0.0.3",
+  "private": true,
+  "description": "Pearcoder session engine: event log, identity, invitations, access control, replay.",
+  "license": "FSL-1.1-ALv2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pearcoderhq/pearcoder.git",
+    "directory": "packages/core"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "@pearcoderhq/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pearcoderhq/protocol": "workspace:*",
+    "zod": "4.6.7"
+  }
+}

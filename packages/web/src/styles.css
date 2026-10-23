@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #12233a;
+  --color-pear: #2f8f6b;
+  --color-pear-soft: #d6ebe2;
+  --color-mist: #eef4f2;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@layer base {
+  :root {
+    color-scheme: light dark;
+  }
+  body {
+    @apply bg-mist text-ink antialiased dark:bg-[#0c1522] dark:text-slate-100;
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "name": "@pearcoderhq/protocol",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Pearcoder collaboration protocol: event envelope, event types and schemas.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pearcoderhq/pearcoder.git",
+    "directory": "packages/protocol"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "@pearcoderhq/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./mentions": {
+      "@pearcoderhq/source": "./src/mentions.ts",
+      "types": "./dist/mentions.d.ts",
+      "default": "./dist/mentions.js"
+    },
+    "./testing": {
+      "@pearcoderhq/source": "./src/testing.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  }
+}

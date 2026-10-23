@@ -1,0 +1,37 @@
+{
+  "name": "@pearcoderhq/client",
+  "version": "0.0.3",
+  "private": true,
+  "description": "Pearcoder local node client: join, login, live stream with reconnect and replay.",
+  "license": "FSL-1.1-ALv2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pearcoderhq/pearcoder.git",
+    "directory": "packages/client"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "@pearcoderhq/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pearcoderhq/core": "workspace:*",
+    "@pearcoderhq/protocol": "workspace:*",
+    "ws": "8.22.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@pearcoderhq/server": "workspace:*",
+    "@types/ws": "^8"
+  }
+}

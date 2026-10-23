@@ -1,0 +1,40 @@
+{
+  "name": "@pearcoderhq/server",
+  "version": "0.0.3",
+  "private": true,
+  "description": "Pearcoder session HTTP and WebSocket server.",
+  "license": "FSL-1.1-ALv2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pearcoderhq/pearcoder.git",
+    "directory": "packages/server"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "@pearcoderhq/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.5",
+    "@pearcoderhq/core": "workspace:*",
+    "@pearcoderhq/protocol": "workspace:*",
+    "@peculiar/x509": "2.2.0",
+    "hono": "4.13.13",
+    "reflect-metadata": "0.2.2",
+    "ws": "8.22.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.2"
+  }
+}

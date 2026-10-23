@@ -1,0 +1,10 @@
+packages:
+  - packages/*
+  - e2e
+
+# Dependency install scripts are denied unless listed as true here. Review before allowing one.
+allowBuilds:
+  # Its postinstall only checks for the native binary, which ships as an optional dependency.
+  "@swc/core": false
+  # Pulled in by vite (vitest). Its native binary ships as an optional dependency; the postinstall is only an optimization.
+  esbuild: false

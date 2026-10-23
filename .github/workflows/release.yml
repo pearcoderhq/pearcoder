@@ -1,0 +1,66 @@
+# Stages npm packages with npm trusted publishing (OIDC). No NPM_TOKEN secret exists or is needed.
+# Staged versions stay private until a maintainer approves them with 2FA:
+#   npm stage list pearcoder  ->  npm stage approve <stage-id>
+# npm side: each package's settings -> Trusted Publisher -> GitHub Actions,
+#   org `pearcoderhq`, repo `pearcoder`, workflow `release.yml`, environment left blank,
+#   permission "npm stage publish" only (never direct publish).
+# Add a protected `npm` environment once the repo is public (private-repo environments need a paid plan).
+# Versions come from Changesets; this
+# publishes every non-private package whose current version is not yet on the registry.
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC token for npm trusted publishing and provenance
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      # `npm stage publish` needs a recent npm 11.
+      - run: npm install -g npm@11
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - run: pnpm test
+
+      - name: Stage unreleased packages
+        run: |
+          set -euo pipefail
+          for dir in packages/*/; do
+            pkg="$dir/package.json"
+            [ -f "$pkg" ] || continue
+            if [ "$(node -p "require('./$pkg').private === true")" = "true" ]; then continue; fi
+            name=$(node -p "require('./$pkg').name")
+            version=$(node -p "require('./$pkg').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "skip $name@$version (already published)"
+              continue
+            fi
+            # pnpm pack rewrites workspace: dependency ranges; npm handles OIDC.
+            tarball=$(cd "$dir" && pnpm pack --pack-destination "$RUNNER_TEMP" | tail -n 1)
+            npm stage publish "$tarball" --access public
+          done

@@ -1,0 +1,23 @@
+{
+  "name": "@pearcoderhq/e2e",
+  "version": "0.0.3",
+  "private": true,
+  "description": "Browser end-to-end tests: real hosts, local nodes and web UIs.",
+  "license": "FSL-1.1-ALv2",
+  "type": "module",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:live": "node live-review.mjs",
+    "test:live:codex": "node live-review-codex.mjs"
+  },
+  "dependencies": {
+    "@pearcoderhq/bridge": "workspace:*",
+    "@pearcoderhq/client": "workspace:*",
+    "@pearcoderhq/core": "workspace:*",
+    "@pearcoderhq/protocol": "workspace:*",
+    "@pearcoderhq/server": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1"
+  }
+}

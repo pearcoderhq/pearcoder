@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    // Workspace packages resolve to their TypeScript sources, so typecheck and tests need no prior build.
+    "customConditions": ["@pearcoderhq/source"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "types": ["node"]
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "name": "pearcoder",
+  "version": "0.3.0",
+  "description": "Where agents and humans have a tea party. Collaboration sessions for developers and their AI coding agents. Placeholder — first release coming soon.",
+  "license": "FSL-1.1-ALv2",
+  "homepage": "https://github.com/pearcoderhq",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pearcoderhq/pearcoder.git",
+    "directory": "packages/cli"
+  },
+  "keywords": [
+    "ai",
+    "coding-agents",
+    "collaboration",
+    "code-review",
+    "mcp",
+    "claude-code"
+  ],
+  "type": "module",
+  "files": [
+    "dist/pearcoder.mjs",
+    "dist/pearcoder.mjs.map",
+    "dist/pearcoder.mjs.LEGAL.txt",
+    "dist/web",
+    "dist/claude-code",
+    "dist/codex",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/bundle.mjs",
+    "typecheck": "tsc --noEmit",
+    "smoke:pack": "node scripts/smoke-pack.mjs"
+  },
+  "dependencies": {},
+  "bin": {
+    "pearcoder": "./dist/pearcoder.mjs"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@pearcoderhq/bridge": "workspace:*",
+    "@pearcoderhq/client": "workspace:*",
+    "@pearcoderhq/core": "workspace:*",
+    "@pearcoderhq/mcp": "workspace:*",
+    "@pearcoderhq/protocol": "workspace:*",
+    "@pearcoderhq/server": "workspace:*",
+    "esbuild": "0.28.2",
+    "zod": "4.6.7"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "exports": {
+    ".": {
+      "@pearcoderhq/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "name": "@pearcoderhq/bridge",
+  "version": "0.0.3",
+  "private": true,
+  "description": "Pearcoder local node: owner-only API and web UI on loopback, holding this device's session connections.",
+  "license": "FSL-1.1-ALv2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pearcoderhq/pearcoder.git",
+    "directory": "packages/bridge"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "@pearcoderhq/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.5",
+    "@pearcoderhq/client": "workspace:*",
+    "@pearcoderhq/core": "workspace:*",
+    "@pearcoderhq/protocol": "workspace:*",
+    "@pearcoderhq/server": "workspace:*",
+    "@pearcoderhq/web": "workspace:*",
+    "hono": "4.13.13",
+    "ws": "8.22.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/ws": "^8"
+  }
+}

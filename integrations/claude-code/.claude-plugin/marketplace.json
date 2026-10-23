@@ -1,0 +1,11 @@
+{
+  "name": "pearcoder",
+  "owner": { "name": "Pearcoder", "url": "https://github.com/pearcoderhq" },
+  "plugins": [
+    {
+      "name": "pearcoder",
+      "source": "./plugins/pearcoder",
+      "description": "Review Pearcoder requests in your own Claude Code with a restricted reviewer that can only read code and save private drafts."
+    }
+  ]
+}
