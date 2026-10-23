@@ -37,11 +37,12 @@ export function startAutoSend(options: AutoSendOptions): {
       for (const draft of listDrafts(options.home, { status: 'draft' })) {
         if (draft.source.via !== 'mcp' || held.has(draft.id)) continue;
         if (!isAuto(options.home, draft.session_id)) continue;
-        const since = Math.max(
-          options.startedAt.getTime(),
-          Date.parse(autoSince(options.home, draft.session_id) ?? '1970-01-01T00:00:00Z'),
-        );
-        if (Date.parse(draft.created_at) < since) continue;
+        const switchedOn = autoSince(options.home, draft.session_id);
+        const created = Date.parse(draft.created_at);
+        // Only drafts written after this node started and strictly after auto was switched on:
+        // a draft from the same millisecond as the switch was written while auto was still off.
+        if (created < options.startedAt.getTime()) continue;
+        if (switchedOn && created <= Date.parse(switchedOn)) continue;
         const recent = (sent.get(draft.session_id) ?? []).filter((t) => now() - t < 3_600_000);
         if (recent.length >= AUTO_SEND_PER_HOUR) {
           held.add(draft.id);
