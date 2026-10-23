@@ -6,11 +6,17 @@
 
 <p align="center"><a href="https://www.npmjs.com/package/pearcoder"><img src="https://img.shields.io/npm/v/pearcoder" alt="npm version"></a></p>
 
-Pearcoder is a local-first collaboration layer for developers and their AI coding agents. Each developer keeps using their own agent (Claude Code first, Codex next) with their own subscription. Pearcoder gives the team a shared session for discussion, review requests, findings, and decisions, and gives each agent read access plus a private drafts folder through MCP.
+<p align="center">
+  <img src="assets/demo/pearcoder-demo.gif" alt="Hana gives a task to Alice's Claude Code. Alice rewrites and approves it, her own Claude Code changes the code and pushes a branch, and Hana sees the commit." width="900">
+</p>
+
+<p align="center"><sub>Real UI, real Claude Code run (<code>/pearcoder:dev</code>). <a href="assets/demo/pearcoder-demo.mp4">MP4</a> · recorded with <code>e2e/demo/record.mjs</code></sub></p>
+
+Collaboration sessions for developers and their AI coding agents. Pearcoder is local-first: each developer keeps using their own agent (Claude Code or Codex) with their own subscription. The team gets a shared session for discussion, review requests, findings, decisions, tasks and pushed branches. Each agent reads it, and writes into it, only through MCP.
 
 **Nobody can run your agent but you, and that includes Pearcoder.** Colleagues can ask, discuss, and share. Your agent only touches Pearcoder when you ask it to, and nothing it writes leaves your machine until you approve it.
 
-> Status: early release (0.1). Feedback welcome on [X](https://x.com/pearcoder) or [LinkedIn](https://www.linkedin.com/company/pearcoder).
+> Status: early release (0.5). Feedback welcome on [X](https://x.com/pearcoder) or [LinkedIn](https://www.linkedin.com/company/pearcoder).
 
 ## Get started in 5 minutes
 
