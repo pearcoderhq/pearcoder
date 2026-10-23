@@ -157,6 +157,86 @@ export const DecisionResolvedSchema = z.looseObject({
   note: z.string().max(4_000).optional(),
 });
 
+// Peer development (ADR-0007). Tasks say who is doing what; code refs say a commit exists. Code
+// itself never travels through Pearcoder, only git coordinates, and neither event grants anything.
+
+/** A person, or a person's agent when `agent` is set. */
+export const AssigneeSchema = z.object({
+  user: UserIdSchema,
+  agent: AgentHarnessSchema.optional(),
+});
+export type Assignee = z.infer<typeof AssigneeSchema>;
+
+export const TaskStatusSchema = z.enum(['open', 'in_progress', 'blocked', 'done']);
+
+export const TaskCreatedSchema = z.looseObject({
+  title: z.string().trim().min(1).max(200),
+  body: z.string().max(16_000).optional(),
+  /**
+   * Who should do it. Assigning someone else's agent asks that agent's owner; it never instructs
+   * the agent (docs/invariants.md, invariant 1).
+   */
+  assignee: AssigneeSchema.optional(),
+  related: z.array(EventIdSchema).max(50).optional(),
+});
+
+export const TaskUpdatedSchema = z
+  .looseObject({
+    task: EventIdSchema,
+    status: TaskStatusSchema.optional(),
+    assignee: AssigneeSchema.optional(),
+    note: z.string().max(4_000).optional(),
+  })
+  .refine((p) => p.status || p.assignee || p.note, 'status, assignee or note is required');
+
+/** A full commit id: SHA-1 (40) or SHA-256 (64) hex. Never a branch name, which can move. */
+export const CommitIdSchema = z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
+
+export const BranchNameSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/)
+  .refine((b) => !b.includes('..') && !b.endsWith('.lock') && !b.endsWith('/'), 'a branch name');
+
+// Credentials in a remote URL (`https://user:token@host/…`) must never reach a session.
+const RepoUrlSchema = z
+  .string()
+  .max(500)
+  .refine((u) => !/^https?:\/\/[^/]*@/i.test(u), 'a repository URL without credentials');
+
+export const CodeRefPublishedSchema = z.looseObject({
+  repo: z.looseObject({ name: z.string().trim().min(1).max(200), url: RepoUrlSchema.optional() }),
+  branch: BranchNameSchema,
+  commit: CommitIdSchema,
+  /** The commit the work started from, so others can diff `base...commit`. */
+  base: CommitIdSchema.optional(),
+  summary: z.string().trim().min(1).max(4_000),
+  task: EventIdSchema.optional(),
+});
+
+/**
+ * What an owner's agent is doing, so nobody wonders whether their message arrived. Published by
+ * the owner's local node; it never carries prompts, tool calls or output.
+ */
+export const AgentStateSchema = z.enum([
+  'idle',
+  'listening',
+  'waiting_owner',
+  /** The owner approved the item, possibly after editing it; the agent has not started yet. */
+  'approved',
+  'working',
+  'done',
+  'declined',
+]);
+
+export const ActivityChangedSchema = z.looseObject({
+  agent: AgentHarnessSchema,
+  state: AgentStateSchema,
+  /** The message, request or task this state is about. */
+  item: EventIdSchema.optional(),
+  /** The owner edited the item before letting their agent handle it. */
+  edited: z.boolean().optional(),
+});
+
 export const EVENT_PAYLOAD_SCHEMAS = {
   'participant.joined': ParticipantJoinedSchema,
   'participant.left': ParticipantLeftSchema,
@@ -170,6 +250,10 @@ export const EVENT_PAYLOAD_SCHEMAS = {
   'decision.proposed': DecisionProposedSchema,
   'decision.vote': DecisionVoteSchema,
   'decision.resolved': DecisionResolvedSchema,
+  'task.created': TaskCreatedSchema,
+  'task.updated': TaskUpdatedSchema,
+  'code_ref.published': CodeRefPublishedSchema,
+  'activity.changed': ActivityChangedSchema,
 } as const;
 
 export type KnownEventType = keyof typeof EVENT_PAYLOAD_SCHEMAS;

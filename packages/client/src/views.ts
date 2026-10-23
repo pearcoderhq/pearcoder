@@ -196,3 +196,97 @@ export function mentionsOf(events: SequencedEvent[], userId: string): MentionVie
   }
   return out;
 }
+
+export interface TaskView {
+  id: string;
+  from: string;
+  from_name: string;
+  title: string;
+  body?: string;
+  assignee?: { user: string; agent?: AgentHarness };
+  /** The event that made the current assignment (`task.created` or a `task.updated`). */
+  assigned_by_event: string;
+  status: 'open' | 'in_progress' | 'blocked' | 'done';
+  notes: { by: string; text: string; at: string }[];
+  created_at: string;
+}
+
+export function tasksOf(events: SequencedEvent[]): TaskView[] {
+  const names = new Map(participantsOf(events).map((p) => [p.user_id, p.display_name]));
+  const tasks = new Map<string, TaskView>();
+  for (const e of events) {
+    const p = e.payload as Record<string, unknown>;
+    if (e.type === 'task.created') {
+      tasks.set(e.id, {
+        id: e.id,
+        from: e.actor_user_id,
+        from_name: names.get(e.actor_user_id) ?? e.actor_user_id,
+        title: String(p.title),
+        ...(typeof p.body === 'string' && { body: p.body }),
+        ...(p.assignee !== undefined && { assignee: p.assignee as TaskView['assignee'] }),
+        assigned_by_event: e.id,
+        status: 'open',
+        notes: [],
+        created_at: e.received_at,
+      });
+    } else if (e.type === 'task.updated') {
+      const task = tasks.get(String(p.task));
+      if (!task) continue;
+      if (typeof p.status === 'string') task.status = p.status as TaskView['status'];
+      if (p.assignee !== undefined) {
+        task.assignee = p.assignee as TaskView['assignee'];
+        task.assigned_by_event = e.id;
+      }
+      if (typeof p.note === 'string') {
+        task.notes.push({ by: e.actor_user_id, text: p.note, at: e.received_at });
+      }
+    }
+  }
+  return [...tasks.values()];
+}
+
+export interface CodeRefView {
+  id: string;
+  from: string;
+  /** Pushed by the author's agent (published by the author). */
+  by_agent: boolean;
+  repo: { name: string; url?: string };
+  branch: string;
+  commit: string;
+  base?: string;
+  summary: string;
+  task?: string;
+  reply_to?: string;
+  /** A later code ref for the same repository and branch: this commit is no longer the tip. */
+  superseded_by?: string;
+  at: string;
+}
+
+export function codeRefsOf(events: SequencedEvent[]): CodeRefView[] {
+  const refs: CodeRefView[] = [];
+  const latest = new Map<string, CodeRefView>();
+  for (const e of events) {
+    if (e.type !== 'code_ref.published') continue;
+    const p = e.payload as Record<string, unknown>;
+    const repo = p.repo as { name: string; url?: string };
+    const ref: CodeRefView = {
+      id: e.id,
+      from: e.actor_user_id,
+      by_agent: Boolean(e.actor_agent_id),
+      repo,
+      branch: String(p.branch),
+      commit: String(p.commit),
+      ...(typeof p.base === 'string' && { base: p.base }),
+      summary: String(p.summary),
+      ...(typeof p.task === 'string' && { task: p.task }),
+      ...(e.reply_to && { reply_to: e.reply_to }),
+      at: e.received_at,
+    };
+    const key = `${repo.url ?? repo.name}\u0000${ref.branch}`;
+    const previous = latest.get(key);
+    if (previous && previous.commit !== ref.commit) previous.superseded_by = ref.id;
+    latest.set(key, ref);
+    refs.push(ref);
+  }
+  return refs;
+}

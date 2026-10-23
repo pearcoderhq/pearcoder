@@ -392,11 +392,15 @@ export function DraftsPanel(props: {
                   <Severity value={d.payload.severity} />
                 ) : (
                   <span className="rounded bg-black/5 px-1.5 py-0.5 text-[10px] font-semibold uppercase dark:bg-white/10">
-                    reply
+                    {d.kind === 'code_ref' ? 'push' : 'reply'}
                   </span>
                 )}
                 <span className="truncate font-medium">
-                  {d.kind === 'finding' ? d.payload.title : d.payload.text}
+                  {d.kind === 'finding'
+                    ? d.payload.title
+                    : d.kind === 'code_ref'
+                      ? `${d.payload.branch} @ ${d.payload.commit.slice(0, 7)}: ${d.payload.summary}`
+                      : d.payload.text}
                 </span>
                 <span className="ml-auto text-xs text-slate-500">{name(d.session_id)}</span>
               </button>
@@ -462,6 +466,20 @@ function DraftEditor({ id, onDone }: { id: string; onDone: () => void }) {
           onChange={(e) => setPayload({ ...payload, text: e.target.value })}
           className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm dark:border-white/15 dark:bg-[#0c1522]"
         />
+      ) : 'commit' in payload ? (
+        // A pushed commit's coordinates: the summary is the only part worth editing.
+        <>
+          <p className="font-mono text-xs">
+            {payload.repo.name} {payload.branch} @ {payload.commit.slice(0, 12)}
+          </p>
+          <textarea
+            aria-label="Push summary"
+            rows={3}
+            value={payload.summary}
+            onChange={(e) => setPayload({ ...payload, summary: e.target.value })}
+            className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm dark:border-white/15 dark:bg-[#0c1522]"
+          />
+        </>
       ) : (
         <FindingFields payload={payload} onChange={setPayload} />
       )}

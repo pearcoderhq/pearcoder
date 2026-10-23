@@ -20,12 +20,23 @@ import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { WebSocketServer } from 'ws';
 import { z } from 'zod';
+import { agentItems, gateOf } from './agent-items.js';
+import { startAgentStatus } from './agent-status.js';
 import { startAutoSend } from './auto-send.js';
 import { DraftError, discardDraft, getDraft, listDrafts, updateDraft } from './drafts.js';
 import { SessionHub } from './hub.js';
 import { notify } from './notify.js';
-import { allowItem, isAuto, setAuto } from './policy.js';
+import {
+  allowItem,
+  approvalOf,
+  declineItem,
+  isAuto,
+  setAuto,
+  setShareStatus,
+  sharesStatus,
+} from './policy.js';
 import { PublishBlockedError, publishDraft } from './publish.js';
+import { activeRuns, claimedItems, claimOf, stopItem } from './runs.js';
 
 export const LOCAL_WS_PROTOCOL = 'pearcoder.local.v1';
 const REFRESH_MS = 10_000;
@@ -81,6 +92,9 @@ const UI_EVENT_TYPES = [
   'decision.proposed',
   'decision.vote',
   'decision.resolved',
+  'task.created',
+  'task.updated',
+  'code_ref.published',
 ] as const;
 const UiEventBody = z.object({
   type: z.enum(UI_EVENT_TYPES),
@@ -184,24 +198,89 @@ export async function startLocalNode(options: LocalNodeOptions): Promise<Running
     return c.json({ forgotten: id });
   });
 
-  app.get('/api/sessions/:id/agent-policy', (c) =>
-    c.json({ auto: isAuto(options.home, c.req.param('id')) }),
-  );
-
-  app.post('/api/sessions/:id/agent-policy', async (c) => {
-    const parsed = z.object({ auto: z.boolean() }).safeParse(await readJson(c));
-    if (!parsed.success)
-      throw new LocalHttpError(400, 'INVALID_REQUEST', 'auto must be true or false');
-    setAuto(options.home, c.req.param('id'), parsed.data.auto);
-    return c.json({ auto: parsed.data.auto });
+  const policyView = (sessionId: string) => ({
+    mine: isAuto(options.home, sessionId, 'mine'),
+    others: isAuto(options.home, sessionId, 'others'),
+    share_status: sharesStatus(options.home, sessionId),
   });
 
-  // With auto off: the owner lets their agent handle one request or mention.
+  app.get('/api/sessions/:id/agent-policy', (c) => c.json(policyView(c.req.param('id'))));
+
+  app.post('/api/sessions/:id/agent-policy', async (c) => {
+    const parsed = z
+      .object({
+        mode: z.enum(['mine', 'others']).optional(),
+        auto: z.boolean().optional(),
+        share_status: z.boolean().optional(),
+      })
+      .refine((b) => (b.mode === undefined) === (b.auto === undefined))
+      .safeParse(await readJson(c));
+    if (!parsed.success)
+      throw new LocalHttpError(400, 'INVALID_REQUEST', 'send mode and auto, or share_status');
+    const sessionId = c.req.param('id');
+    if (parsed.data.mode && parsed.data.auto !== undefined) {
+      setAuto(options.home, sessionId, parsed.data.mode, parsed.data.auto);
+    }
+    if (parsed.data.share_status !== undefined) {
+      setShareStatus(options.home, sessionId, parsed.data.share_status);
+    }
+    return c.json(policyView(sessionId));
+  });
+
+  // Items aimed at the owner's agent and where each one stands: waiting for the owner, approved,
+  // being worked on, or handled.
+  app.get('/api/sessions/:id/agent-items', (c) => {
+    const sessionId = c.req.param('id') as SessionId;
+    const events = hub.events(sessionId);
+    if (!events) throw new LocalHttpError(404, 'SESSION_NOT_FOUND', 'unknown session');
+    const handled = claimedItems(options.home);
+    return c.json({
+      runs: activeRuns(options.home),
+      items: agentItems(sessionId, events, options.identity)
+        .filter((item) => !item.by_agent)
+        .map((item) => {
+          const claim = claimOf(options.home, sessionId, item.id);
+          const approval = approvalOf(options.home, sessionId, item.id);
+          return {
+            id: item.id,
+            kind: item.kind,
+            from: item.from,
+            by_owner: item.by_owner,
+            gate: gateOf(options.home, item),
+            ...(approval?.text && { edited_text: approval.text }),
+            state: claim ? 'working' : handled.has(`${sessionId}:${item.id}`) ? 'handled' : 'open',
+            ...(claim && { flow: claim.flow }),
+          };
+        }),
+    });
+  });
+
+  // The owner lets their agent handle one item, optionally after rewriting it. The edited text
+  // stays on this machine; the session only learns that it was approved and edited.
   app.post('/api/sessions/:id/agent-allow', async (c) => {
+    const parsed = z
+      .object({
+        event: z.string().min(1).max(64),
+        text: z.string().trim().min(1).max(16_000).optional(),
+      })
+      .safeParse(await readJson(c));
+    if (!parsed.success) throw new LocalHttpError(400, 'INVALID_REQUEST', 'event is required');
+    allowItem(options.home, c.req.param('id'), parsed.data.event, parsed.data.text);
+    return c.json({ allowed: parsed.data.event, edited: Boolean(parsed.data.text) });
+  });
+
+  app.post('/api/sessions/:id/agent-decline', async (c) => {
     const parsed = z.object({ event: z.string().min(1).max(64) }).safeParse(await readJson(c));
     if (!parsed.success) throw new LocalHttpError(400, 'INVALID_REQUEST', 'event is required');
-    allowItem(options.home, c.req.param('id'), parsed.data.event);
-    return c.json({ allowed: parsed.data.event });
+    declineItem(options.home, c.req.param('id'), parsed.data.event);
+    return c.json({ declined: parsed.data.event });
+  });
+
+  // Stop: the run working on this item may not push for it any more.
+  app.post('/api/sessions/:id/agent-stop', async (c) => {
+    const parsed = z.object({ event: z.string().min(1).max(64) }).safeParse(await readJson(c));
+    if (!parsed.success) throw new LocalHttpError(400, 'INVALID_REQUEST', 'event is required');
+    return c.json({ stopped: stopItem(options.home, c.req.param('id'), parsed.data.event) });
   });
 
   app.get('/api/sessions/:id/events', (c) => {
@@ -412,6 +491,8 @@ export async function startLocalNode(options: LocalNodeOptions): Promise<Running
     }),
   });
 
+  const agentStatus = startAgentStatus({ home: options.home, identity: options.identity, hub });
+
   const refresher = setInterval(() => void hub.refresh(), REFRESH_MS);
   refresher.unref();
   await hub.refresh();
@@ -425,6 +506,7 @@ export async function startLocalNode(options: LocalNodeOptions): Promise<Running
     close: async () => {
       stopNotifications();
       autoSend.stop();
+      agentStatus.stop();
       clearInterval(refresher);
       await hub.close();
       for (const client of wss.clients) client.terminate();

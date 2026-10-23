@@ -3,6 +3,7 @@ import { dirname, join as joinPath } from 'node:path';
 import { type ParseArgsConfig, parseArgs } from 'node:util';
 import {
   allowItem,
+  declineItem,
   discardDraft,
   draftTitle,
   getDraft,
@@ -11,7 +12,10 @@ import {
   PublishBlockedError,
   publishDraft,
   setAuto,
+  setShareStatus,
+  sharesStatus,
   startLocalNode,
+  stopItem,
 } from '@pearcoderhq/bridge';
 import {
   buildContextPackage,
@@ -38,6 +42,7 @@ import {
   resolveEndpoint,
   SessionClient,
   type SessionRecord,
+  tasksOf,
   verifyExport,
   writeRecord,
 } from '@pearcoderhq/client';
@@ -649,49 +654,209 @@ async function isReachable(record: SessionRecord): Promise<boolean> {
   }
 }
 
+const AGENT_USAGE =
+  'pearcoder agent [auto mine|others on|off] [allow <id> [--text "…"]] [decline <id>] [stop <id>] [status on|off] [--session <name|id>]';
+
 /**
- * How your agent acts in a session (ADR-0006): `auto on|off`, `allow <id>` (one item while auto
- * is off), or no argument for the current setting.
+ * How your agent acts in a session (ADR-0006, ADR-0007): the two auto modes, approving (possibly
+ * after rewriting), declining or stopping one item, and whether its status is shared. No argument
+ * shows the current settings.
  */
 export async function agent(argv: string[], io: Io): Promise<number> {
   const { values, positionals } = args(argv, {
     session: { type: 'string' },
+    text: { type: 'string' },
     json: { type: 'boolean', default: false },
   });
   const home = homeOf(io);
-  const [action, value] = positionals;
-  if (action === 'auto' && (value === 'on' || value === 'off')) {
+  const [action, first, second] = positionals;
+  if (action === 'auto') {
+    // `auto on|off` from ADR-0006 meant other people's items.
+    const mode = first === 'mine' || first === 'others' ? first : 'others';
+    const value = first === 'mine' || first === 'others' ? second : first;
+    if (value !== 'on' && value !== 'off') throw new UsageError(AGENT_USAGE);
     const record = values.session ? selectRecord(home, values.session) : undefined;
-    setAuto(home, record?.session_id, value === 'on');
+    setAuto(home, record?.session_id, mode, value === 'on');
+    const where = record ? ` in "${record.session_name}"` : ' by default';
+    const explain = {
+      mine: {
+        on: 'your own messages and tasks go straight to your agent, and its answers to them are sent after the secret scan.',
+        off: 'your own messages and tasks wait for `pearcoder agent allow <id>` (or the UI), and its answers wait for you to send them.',
+      },
+      others: {
+        on: 'anyone in the session can make your agent answer, and its drafts are sent after the secret scan without you reading them. A crafted message could mislead it.',
+        off: "other people's messages, requests and tasks wait until you approve them (`pearcoder agent allow <id> [--text …]`, or the UI), and your agent's drafts wait for you to send them.",
+      },
+    } as const;
     io.stdout(
       values.json
-        ? JSON.stringify({ session: record?.session_id ?? null, auto: value === 'on' })
-        : value === 'on'
-          ? `Auto is on${record ? ` in "${record.session_name}"` : ' by default'}: while /pearcoder:listen runs, your agent answers mentions and requests, and Pearcoder sends its drafts after the secret scan.`
-          : `Auto is off${record ? ` in "${record.session_name}"` : ' by default'}: your agent waits for \`pearcoder agent allow <id>\` (or the UI) before handling an item, and its drafts wait for you to send them.`,
+        ? JSON.stringify({ session: record?.session_id ?? null, mode, auto: value === 'on' })
+        : `Auto "${mode}" is ${value}${where}: ${explain[mode][value]}`,
     );
     return 0;
   }
-  if (action === 'allow' && value) {
+  if (action === 'status' && (first === 'on' || first === 'off')) {
+    const record = selectRecord(home, values.session);
+    setShareStatus(home, record.session_id, first === 'on');
+    io.stdout(
+      values.json
+        ? JSON.stringify({ session: record.session_id, share_status: first === 'on' })
+        : first === 'on'
+          ? `"${record.session_name}" sees what your agent is doing (waiting for you, working, done), never what it reads or writes.`
+          : `"${record.session_name}" no longer sees what your agent is doing.`,
+    );
+    return 0;
+  }
+  if ((action === 'allow' || action === 'decline' || action === 'stop') && first) {
     const record = selectRecord(home, values.session);
     const client = await connect(record, loadOrCreateDeviceIdentity(home));
-    const id = expandId(await client.history(), value);
-    allowItem(home, record.session_id, id);
-    io.stdout(
-      values.json ? JSON.stringify({ allowed: id }) : `Your agent may handle #${short(id)} now.`,
-    );
+    const id = expandId(await client.history(), first);
+    if (action === 'allow') {
+      allowItem(home, record.session_id, id, values.text);
+      io.stdout(
+        values.json
+          ? JSON.stringify({ allowed: id, edited: Boolean(values.text) })
+          : values.text
+            ? `Your agent handles #${short(id)} as you rewrote it. The session sees that you approved it with edits, not your text.`
+            : `Your agent may handle #${short(id)} now.`,
+      );
+    } else if (action === 'decline') {
+      declineItem(home, record.session_id, id);
+      io.stdout(values.json ? JSON.stringify({ declined: id }) : `Declined #${short(id)}.`);
+    } else {
+      const stopped = stopItem(home, record.session_id, id);
+      io.stdout(
+        values.json
+          ? JSON.stringify({ stopped })
+          : stopped
+            ? `Stopped #${short(id)}: your agent can't push for it any more.`
+            : `Nothing is working on #${short(id)}.`,
+      );
+    }
     return 0;
   }
-  if (action)
-    throw new UsageError('pearcoder agent [auto on|off] [allow <id>] [--session <name|id>]');
+  if (action) throw new UsageError(AGENT_USAGE);
   const rows = listRecords(home).map((r) => ({
     session: r.session_name,
     session_id: r.session_id,
-    auto: isAuto(home, r.session_id),
+    mine: isAuto(home, r.session_id, 'mine'),
+    others: isAuto(home, r.session_id, 'others'),
+    share_status: sharesStatus(home, r.session_id),
   }));
   if (values.json) io.stdout(JSON.stringify({ sessions: rows }));
   else
-    for (const r of rows) io.stdout(`${r.session}  ${r.session_id}  auto ${r.auto ? 'on' : 'off'}`);
+    for (const r of rows) {
+      const onOff = (v: boolean) => (v ? 'on' : 'off');
+      io.stdout(
+        `${r.session}  ${r.session_id}  auto mine ${onOff(r.mine)}, others ${onOff(r.others)}, status ${onOff(r.share_status)}`,
+      );
+    }
+  return 0;
+}
+
+const TASK_USAGE =
+  'pearcoder task "<title>" [--body "…"] [--to <name>|me [--agent claude|codex]] · task <id> --status open|in_progress|blocked|done [--to …] [--note "…"]';
+
+/**
+ * Creates or updates a task. Assigning someone else's agent asks its owner, who approves or edits
+ * it first unless they turned auto "others" on; it never starts the agent (ADR-0007).
+ */
+export async function task(argv: string[], io: Io): Promise<number> {
+  const { values, positionals } = args(argv, {
+    session: { type: 'string' },
+    body: { type: 'string' },
+    to: { type: 'string' },
+    agent: { type: 'string' },
+    status: { type: 'string' },
+    note: { type: 'string' },
+    json: { type: 'boolean', default: false },
+  });
+  const home = homeOf(io);
+  const identity = loadOrCreateDeviceIdentity(home);
+  const record = selectRecord(home, values.session);
+  const client = await connect(record, identity);
+  const history = await client.history();
+  const harness = values.agent ? AGENT_FLAGS[values.agent] : undefined;
+  if (values.agent && !harness) throw new UsageError('--agent must be claude or codex');
+  if (harness && !values.to) throw new UsageError('--agent needs --to <name>|me');
+  let assignee: { user: string; agent?: AgentHarness } | undefined;
+  if (values.to) {
+    let user = identity.userId;
+    if (values.to !== 'me') {
+      try {
+        user = findParticipants(history, [values.to])[0]?.user_id ?? '';
+      } catch (error) {
+        throw new UsageError((error as Error).message);
+      }
+    }
+    assignee = { user, ...(harness && { agent: harness }) };
+  }
+  const statuses = ['open', 'in_progress', 'blocked', 'done'];
+  if (values.status && !statuses.includes(values.status)) {
+    throw new UsageError(`--status must be one of ${statuses.join(', ')}`);
+  }
+  const existing =
+    positionals.length === 1 && positionals[0]
+      ? matching(history, positionals[0], ['task.created'])
+      : [];
+  if (existing.length === 1 && existing[0]) {
+    if (!values.status && !assignee && !values.note) throw new UsageError(TASK_USAGE);
+    const result = await client.append({
+      type: 'task.updated',
+      payload: {
+        task: existing[0].id,
+        ...(values.status && { status: values.status }),
+        ...(assignee && { assignee }),
+        ...(values.note && { note: values.note }),
+      },
+    });
+    io.stdout(values.json ? JSON.stringify(result) : `Updated task #${short(existing[0].id)}.`);
+    return 0;
+  }
+  const title = positionals.join(' ').trim();
+  if (!title) throw new UsageError(TASK_USAGE);
+  const result = await client.append({
+    type: 'task.created',
+    payload: {
+      title,
+      ...(values.body && { body: values.body }),
+      ...(assignee && { assignee }),
+    },
+  });
+  const name = namesIn(history);
+  const whom = assignee
+    ? `${assignee.user === identity.userId ? 'you' : name(assignee.user)}${assignee.agent ? `${assignee.user === identity.userId ? 'r' : "'s"} ${AGENT_LABEL[assignee.agent]}` : ''}`
+    : undefined;
+  io.stdout(
+    values.json
+      ? JSON.stringify(result)
+      : `Created task #${short(result.id)}${whom ? ` for ${whom}` : ''}.${assignee?.agent && assignee.user !== identity.userId ? ' Their owner decides whether their agent takes it.' : ''}`,
+  );
+  return 0;
+}
+
+export async function tasks(argv: string[], io: Io): Promise<number> {
+  const { values } = args(argv, {
+    session: { type: 'string' },
+    all: { type: 'boolean', default: false },
+    json: { type: 'boolean', default: false },
+  });
+  const home = homeOf(io);
+  const record = selectRecord(home, values.session);
+  const history = await (await connect(record, loadOrCreateDeviceIdentity(home))).history();
+  const list = tasksOf(history).filter((t) => values.all || t.status !== 'done');
+  if (values.json) {
+    io.stdout(JSON.stringify({ tasks: list }));
+    return 0;
+  }
+  if (!list.length) io.stdout('No open tasks. Create one: pearcoder task "<title>" --to <name>');
+  const name = namesIn(history);
+  for (const t of list) {
+    const who = t.assignee
+      ? `${name(t.assignee.user)}${t.assignee.agent ? `'s ${AGENT_LABEL[t.assignee.agent]}` : ''}`
+      : 'nobody';
+    io.stdout(`${short(t.id)}  [${t.status}] ${t.title} (${who}, from ${t.from_name})`);
+  }
   return 0;
 }
 
@@ -1365,6 +1530,11 @@ export async function drafts(argv: string[], io: Io): Promise<number> {
           );
         io.stdout('');
         io.stdout(p.body);
+      } else if (draft.kind === 'code_ref') {
+        const p = draft.payload;
+        io.stdout(`Pushed ${p.repo.name} ${p.branch} at ${p.commit}`);
+        io.stdout('');
+        io.stdout(p.summary);
       } else {
         io.stdout(`Reply to ${draft.payload.reply_to}`);
         io.stdout('');
@@ -1495,7 +1665,7 @@ export async function attach(argv: string[], io: Io): Promise<number> {
       '- MCP server `pearcoder` registered for your user (read sessions, save private drafts; it cannot publish).',
     );
     io.stdout(
-      '- Plugin installed: /pearcoder:review, /pearcoder:discuss and /pearcoder:listen, each in its own restricted subagent (no shell, no edits, no web).',
+      '- Plugin installed: /pearcoder:review, /pearcoder:discuss and /pearcoder:listen, each in its own restricted subagent (no shell, no edits, no web), and /pearcoder:dev, which edits files and pushes branches for your own items only (no shell, no web, never main).',
     );
     io.stdout(
       '- Your sessions now show "Claude Code" next to your name, so people can address review requests to it. It still only runs when you start it.',
@@ -1511,6 +1681,9 @@ export async function attach(argv: string[], io: Io): Promise<number> {
     );
     io.stdout(
       '  Or run /pearcoder:listen: your agent keeps watch, drafting findings for review requests and answers to @mentions of it. /pearcoder:listen once handles what is waiting and stops.',
+    );
+    io.stdout(
+      "  Or run /pearcoder:dev: your agent changes code for what you @mention it with or assign it in Pearcoder, and pushes to a branch. Other people's items reach it only after you rewrite and approve them.",
     );
     io.stdout(
       'The first time, Claude Code asks to allow the Pearcoder tools: choose "always allow" for them.',
@@ -1569,13 +1742,16 @@ async function attachCodex(
       '- MCP server `pearcoder` registered (read sessions, save private drafts; it cannot publish).',
     );
     io.stdout(
-      '- Installed the pearcoder-reviewer, pearcoder-discuss and pearcoder-listen subagents and their skills.',
+      '- Installed the pearcoder-reviewer, pearcoder-discuss, pearcoder-listen and pearcoder-dev subagents and their skills.',
     );
     io.stdout(
       'Review with a read-only sandbox: codex --sandbox read-only, then ask it to use the pearcoder-review skill (it picks your oldest open request; ids are in `pearcoder inbox`).',
     );
     io.stdout(
       'Codex cannot allowlist subagent tools, so the read-only sandbox is what keeps the review from writing or reaching the network.',
+    );
+    io.stdout(
+      'For dev mode (pearcoder-dev skill) use codex --sandbox workspace-write: it edits the repository, and only git_commit_push pushes.',
     );
   }
   return 0;

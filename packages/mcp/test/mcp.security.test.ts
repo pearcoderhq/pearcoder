@@ -118,6 +118,8 @@ beforeAll(async () => {
   writeFileSync(join(repoDir, 'token.ts'), 'export const ttl = 3600;\n');
   git('commit', '-qam', 'longer ttl');
 
+  // These tests are about other people's items: let them reach the agent without approval.
+  setAuto(bobHome, undefined, 'others', true);
   const mcp = createPearcoderMcpServer({ home: bobHome, identity: bob, cwd: repoDir });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   await mcp.connect(serverSide);
@@ -149,8 +151,12 @@ describe('pearcoder MCP server', () => {
       );
     }
     const readOnly = tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name);
+    // The only tool that writes outside private drafts is git_commit_push (ADR-0007), and it
+    // writes to the owner's git remote, never to a session.
     expect(readOnly).toEqual(
-      expect.arrayContaining(PEARCODER_TOOLS.filter((t) => !t.endsWith('_draft'))),
+      expect.arrayContaining(
+        PEARCODER_TOOLS.filter((t) => !t.endsWith('_draft') && t !== 'git_commit_push'),
+      ),
     );
   });
 
@@ -385,18 +391,18 @@ describe('reply drafts (pearcoder-discuss)', () => {
   });
 
   it('with auto off, inbox_wait holds an item until the owner allows it (ADR-0006)', async () => {
-    setAuto(bobHome, session.sessionId, false);
+    setAuto(bobHome, session.sessionId, 'others', false);
     try {
       const id = hostAppend('message.created', {
         text: "@Bob's Claude Code please check the retry logic",
         agent_mentions: [{ user: bob.userId, agent: 'claude-code' }],
       }).id;
       const held = await call('inbox_wait', { timeout_seconds: 1 });
-      expect(held.text).toMatch(/^Nothing new\. 1 item waits for your owner to allow it/);
+      expect(held.text).toMatch(/^Nothing new\. 1 item waits for your owner to approve it/);
       allowItem(bobHome, session.sessionId, id);
       expect((await call('inbox_wait', { timeout_seconds: 1 })).text).toContain(`message ${id}`);
     } finally {
-      setAuto(bobHome, session.sessionId, true);
+      setAuto(bobHome, session.sessionId, 'others', true);
     }
   });
 

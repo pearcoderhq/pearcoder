@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ReviewFindingSchema, SessionIdSchema } from '@pearcoderhq/protocol';
+import {
+  CodeRefPublishedSchema,
+  ReviewFindingSchema,
+  SessionIdSchema,
+} from '@pearcoderhq/protocol';
 import { z } from 'zod';
 
 // Private drafts written by the owner's agent through MCP. They live only on this machine
@@ -27,11 +31,19 @@ const DraftBase = {
     agent_id: z.string().optional(),
   }),
   published_event_id: z.uuid().optional(),
+  /**
+   * The item this draft answers, set by the MCP server (never by the agent). `by_owner`: the
+   * owner's own text (signed by them, or their edited version), so it falls under auto mode
+   * "mine" rather than "others" (ADR-0007).
+   */
+  trigger: z.object({ item: z.uuid(), by_owner: z.boolean() }).optional(),
 };
 
 export const DraftSchema = z.discriminatedUnion('kind', [
   z.object({ ...DraftBase, kind: z.literal('finding'), payload: ReviewFindingSchema }),
   z.object({ ...DraftBase, kind: z.literal('reply'), payload: ReplyPayloadSchema }),
+  // Written by git_commit_push after a push: the commit's coordinates, never its contents.
+  z.object({ ...DraftBase, kind: z.literal('code_ref'), payload: CodeRefPublishedSchema }),
 ]);
 
 export type Draft = z.infer<typeof DraftSchema>;
@@ -65,18 +77,26 @@ export type DraftKind = Draft['kind'];
 
 /** A short label for lists: the finding title, or the start of a reply. */
 export function draftTitle(draft: Draft): string {
-  return draft.kind === 'finding'
-    ? draft.payload.title
-    : `Reply: ${draft.payload.text.slice(0, 80)}`;
+  if (draft.kind === 'finding') return draft.payload.title;
+  if (draft.kind === 'code_ref')
+    return `Pushed ${draft.payload.branch} ${draft.payload.commit.slice(0, 7)}`;
+  return `Reply: ${draft.payload.text.slice(0, 80)}`;
 }
 
 function payloadSchema(kind: DraftKind) {
+  if (kind === 'code_ref') return CodeRefPublishedSchema;
   return kind === 'finding' ? ReviewFindingSchema : ReplyPayloadSchema;
 }
 
 export function createDraft(
   home: string,
-  input: { sessionId: string; kind?: DraftKind; payload: unknown; source: Draft['source'] },
+  input: {
+    sessionId: string;
+    kind?: DraftKind;
+    payload: unknown;
+    source: Draft['source'];
+    trigger?: Draft['trigger'];
+  },
 ): Draft {
   const kind = input.kind ?? 'finding';
   const payload = payloadSchema(kind).safeParse(input.payload);
@@ -96,6 +116,7 @@ export function createDraft(
     created_at: now,
     updated_at: now,
     source: input.source,
+    ...(input.trigger && { trigger: input.trigger }),
     payload: payload.data,
   } as Draft);
 }

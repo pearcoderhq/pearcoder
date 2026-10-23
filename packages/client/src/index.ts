@@ -46,6 +46,8 @@ export {
 } from './records.js';
 export { fetchPeerCertificate, pinnedAgent } from './tls.js';
 export {
+  type CodeRefView,
+  codeRefsOf,
   findParticipants,
   inboxOf,
   type MentionView,
@@ -58,4 +60,6 @@ export {
   participantsOf,
   type RequestView,
   requestsOf,
+  type TaskView,
+  tasksOf,
 } from './views.js';

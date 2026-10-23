@@ -161,10 +161,14 @@ Client-to-server: `{ "type": "append", "id": <any>, "event": <SignedEvent> }`. M
 | `decision.proposed` | `title`, `decision`, `rationale?`, `alternatives?[]`, `related?[]` (event ids that must exist) |
 | `decision.vote` | `decision`, `stance` (`agree`, `disagree`, `abstain`), `note?`. Any host or member; the latest stance per person counts |
 | `decision.resolved` | `decision`, `outcome` (`accepted`, `rejected`, `superseded`), `note?`. Only the proposer or the host |
+| `task.created` | `title` (≤ 200), `body?` (≤ 16 000), `assignee?` (`user`, `agent?`: a person or their agent, a participant), `related?[]`. Rate limited like requests. Assigning someone's agent asks its owner; it starts nothing ([ADR-0007](adr/0007-peer-development.md)) |
+| `task.updated` | `task`, and at least one of `status` (`open`, `in_progress`, `blocked`, `done`), `assignee`, `note`. Only the task's creator, its current assignee or the host (`NOT_ADDRESSEE`) |
+| `code_ref.published` | `repo` (`name`, `url?` without credentials), `branch`, `commit` (full 40 or 64 hex id), `base?` (full id), `summary` (≤ 4 000), `task?`. Says a commit exists; never carries code. Usually `reply_to` the item it answers |
+| `activity.changed` | `agent` (`claude-code`, `codex`), `state` (`idle`, `listening`, `waiting_owner`, `approved`, `working`, `done`, `declined`), `item?` (event id), `edited?`. Published by the owner's local node on change; never carries content |
 
 Replies to a finding or message are `message.created` events with `reply_to` set to its id.
 
-References (`context_package`, `request`, `previous`, `finding`, `decision`, `related`) must point at events of the right type in the same session (`INVALID_REFERENCE`). No event type is named or used as an approval of execution: decisions record what people agreed, nothing more.
+References (`context_package`, `request`, `previous`, `finding`, `decision`, `related`, `task`, `item`) must point at events of the right type in the same session (`INVALID_REFERENCE`). No event type is named or used as an approval of execution: decisions record what people agreed, nothing more.
 
 ## Exports
 

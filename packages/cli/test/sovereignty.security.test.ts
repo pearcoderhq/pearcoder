@@ -57,6 +57,7 @@ describe('static guarantees', () => {
       'packages/cli/src/attach.ts', // owner-run `claude mcp add` / `claude plugin install`
       'packages/cli/src/open.ts', // opens the owner's browser
       'packages/client/src/context-package.ts', // read-only `git rev-parse` / `merge-base`, `gh pr view`
+      'packages/mcp/src/git-push.ts', // git_commit_push: commit and push the current branch, hooks off (ADR-0007)
       'packages/mcp/src/server.ts', // read-only `git diff base...head` for the git_diff tool
     ]);
   });
@@ -213,7 +214,11 @@ describe('hostile session input reaches no agent', () => {
       // Bob's agent can read it all, fenced, and still has no way to act on the session.
       const { tools } = await client.listTools();
       const readOnly = tools.filter((t) => t.name !== 'finding_draft');
-      for (const tool of readOnly) await client.callTool({ name: tool.name, arguments: {} });
+      for (const tool of readOnly) {
+        // The wait tools would otherwise wait their full default for items that never come.
+        const args = tool.name.endsWith('_wait') ? { timeout_seconds: 1 } : {};
+        await client.callTool({ name: tool.name, arguments: args });
+      }
       expect(session.log.head).toBe(headAfterBarrage);
       expect(listDrafts(bobHome)).toEqual([]);
     } finally {

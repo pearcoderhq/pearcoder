@@ -8,6 +8,8 @@ import {
   useState,
 } from 'react';
 import {
+  type AgentItemView,
+  type AgentPolicy,
   ApiError,
   api,
   type Draft,
@@ -17,7 +19,10 @@ import {
   subscribe,
   type WireEvent,
 } from './api';
+import { ActivityLine, AgentBar, CodeRefCard, OwnerGate, TaskCard, TaskForm } from './dev';
 import {
+  type AgentState,
+  activityOf,
   agentLabel,
   candidatesFor,
   isOnline,
@@ -27,6 +32,7 @@ import {
   type Person,
   participants,
   presenceLabel,
+  supersededRefs,
 } from './model';
 import {
   DecisionCard,
@@ -152,6 +158,7 @@ export function App() {
             await refresh().catch(() => undefined);
           }}
           people={activePeople}
+          activity={activityOf(activeEvents).overall}
           me={me}
           inbox={inbox}
         />
@@ -234,6 +241,7 @@ function Sidebar(props: {
   onSelect: (id: string) => void;
   onForget: (id: string) => Promise<void>;
   people: Person[];
+  activity: Map<string, AgentState>;
   me: Me | null;
   inbox: { event: WireEvent; session: SessionView }[];
 }) {
@@ -349,6 +357,9 @@ function Sidebar(props: {
                     title="Attached with pearcoder attach. It only runs when its owner starts it."
                   >
                     ↳ {p.userId === props.me?.user_id ? 'your' : `${p.name}'s`} {agentLabel(agent)}
+                    {props.activity.get(p.userId) === 'listening' && (
+                      <span className="text-pear"> · listening</span>
+                    )}
                   </div>
                 ))}
             </li>
@@ -374,25 +385,52 @@ function Conversation({
   onDrafts: () => void;
   onEditDrafts: () => void;
 }) {
-  // The owner's per-session agent setting (ADR-0006); on unless they turned it off.
-  const [auto, setAuto] = useState<boolean | null>(null);
+  // The owner's agent settings for this session (ADR-0007).
+  const [policy, setPolicy] = useState<AgentPolicy | null>(null);
   useEffect(() => {
     api
       .agentPolicy(session.session_id)
-      .then((p) => setAuto(p.auto))
-      .catch(() => setAuto(null));
+      .then(setPolicy)
+      .catch(() => setPolicy(null));
   }, [session.session_id]);
   const myAgents = me
     ? (participants(events).find((p) => p.userId === me.user_id)?.agents ?? [])
     : [];
-  const toggleAuto = async (value: boolean) => {
-    setAuto((await api.setAgentPolicy(session.session_id, value)).auto);
+  // Items aimed at the owner's agent and where each stands; runs change them, so poll too.
+  const [agentItems, setAgentItems] = useState<Map<string, AgentItemView>>(new Map());
+  const loadItems = useCallback(() => {
+    api
+      .agentItems(session.session_id)
+      .then((r) => setAgentItems(new Map(r.items.map((i) => [i.id, i]))))
+      .catch(() => undefined);
+  }, [session.session_id]);
+  const eventCount = events.length;
+  useEffect(() => {
+    if (eventCount >= 0) loadItems();
+    const timer = setInterval(loadItems, 3000);
+    return () => clearInterval(timer);
+  }, [loadItems, eventCount]);
+  const activity = useMemo(() => activityOf(events), [events]);
+  const superseded = useMemo(() => supersededRefs(events), [events]);
+  const myAgent = myAgents[0] ?? 'claude-code';
+  const gate = (event: WireEvent, original: string) => {
+    const item = agentItems.get(event.id);
+    if (!item) return null;
+    return (
+      <OwnerGate
+        sessionId={session.session_id}
+        item={item}
+        agent={myAgent}
+        original={original}
+        onChange={loadItems}
+      />
+    );
   };
-  // The agent's pending reply drafts, shown under the message they answer.
+  // The agent's pending reply and push drafts, shown under the item they answer.
   const replyDrafts = new Map(
     drafts
-      .filter((d) => d.kind === 'reply' && d.status === 'draft')
-      .map((d) => [d.kind === 'reply' ? d.payload.reply_to : '', d]),
+      .filter((d) => d.status === 'draft' && (d.kind === 'reply' || d.kind === 'code_ref'))
+      .map((d) => [d.kind === 'reply' ? d.payload.reply_to : (d.trigger?.item ?? ''), d]),
   );
   const names = useMemo(
     () => new Map(participants(events).map((p) => [p.userId, p.name])),
@@ -407,6 +445,8 @@ function Conversation({
     (e) =>
       ![
         'presence.changed',
+        'activity.changed',
+        'task.updated',
         'request.resolved',
         'finding.resolved',
         'decision.vote',
@@ -421,6 +461,8 @@ function Conversation({
     const findingResolution = new Map<string, WireEvent>();
     const votes = new Map<string, Record<string, string>>();
     const outcomes = new Map<string, WireEvent>();
+    const taskUpdates = new Map<string, WireEvent[]>();
+    const taskRefs = new Map<string, WireEvent[]>();
     for (const e of events) {
       const ref = (key: string) => String(e.payload[key]);
       if (e.type === 'request.resolved') {
@@ -435,11 +477,15 @@ function Conversation({
           [e.actor_user_id]: ref('stance'),
         });
       } else if (e.type === 'decision.resolved') outcomes.set(ref('decision'), e);
-      else if (e.type === 'message.created' && e.reply_to) {
+      else if (e.type === 'task.updated') {
+        taskUpdates.set(ref('task'), [...(taskUpdates.get(ref('task')) ?? []), e]);
+      } else if (e.type === 'code_ref.published' && typeof e.payload.task === 'string') {
+        taskRefs.set(ref('task'), [...(taskRefs.get(ref('task')) ?? []), e]);
+      } else if (e.type === 'message.created' && e.reply_to) {
         replies.set(e.reply_to, [...(replies.get(e.reply_to) ?? []), e]);
       }
     }
-    return { resolutions, replies, findingResolution, votes, outcomes };
+    return { resolutions, replies, findingResolution, votes, outcomes, taskUpdates, taskRefs };
   }, [events]);
   const requestAuthor = (requestId: unknown) =>
     events.find((e) => e.id === requestId && e.type === 'request.created')?.actor_user_id;
@@ -456,39 +502,71 @@ function Conversation({
 
   return (
     <>
-      {myAgents.length > 0 && auto !== null && (
-        <div
-          role="status"
-          className={`flex items-center gap-3 border-b px-8 py-2 text-sm ${
-            auto
-              ? 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100'
-              : 'border-black/5 text-slate-500 dark:border-white/10'
-          }`}
-        >
-          <span className="flex-1">
-            {auto
-              ? `Auto is on: while /pearcoder:listen runs, your ${agentLabel(myAgents[0] ?? '')} answers @mentions and review requests here, and Pearcoder sends its replies without asking you (after a secret scan).`
-              : `Auto is off: your ${agentLabel(myAgents[0] ?? '')} waits for you to let it handle each item, and its replies wait for Send.`}
-          </span>
-          <button
-            type="button"
-            onClick={() => void toggleAuto(!auto)}
-            className="rounded-md border border-current px-2 py-0.5 text-xs font-semibold"
-          >
-            {auto ? 'Turn off' : 'Turn on'}
-          </button>
-        </div>
+      {myAgents.length > 0 && policy && (
+        <AgentBar session={session} agent={myAgent} policy={policy} onPolicy={setPolicy} />
       )}
       <ol className="flex-1 space-y-1 overflow-y-auto px-8 py-6" aria-live="polite">
         {visible.map((event) =>
           event.type === 'request.created' ? (
-            <RequestCard
+            <li key={event.sequence} className="list-none">
+              <ol>
+                <RequestCard
+                  event={event}
+                  name={name}
+                  session={session}
+                  resolved={thread.resolutions.get(event.id) ?? {}}
+                  {...(me ? { me: me.user_id } : {})}
+                />
+              </ol>
+              {gate(
+                event,
+                [String(event.payload.title), String(event.payload.body ?? '')]
+                  .filter(Boolean)
+                  .join('\n\n'),
+              )}
+              <ActivityLine
+                activity={activity.byItem.get(event.id) ?? []}
+                name={name}
+                me={me?.user_id}
+              />
+            </li>
+          ) : event.type === 'task.created' ? (
+            <TaskCard
+              key={event.sequence}
+              event={event}
+              updates={thread.taskUpdates.get(event.id) ?? []}
+              refs={thread.taskRefs.get(event.id) ?? []}
+              name={name}
+              me={me?.user_id}
+              session={session}
+              isHost={isHost}
+            >
+              {gate(
+                event,
+                [String(event.payload.title), String(event.payload.body ?? '')]
+                  .filter(Boolean)
+                  .join('\n\n'),
+              )}
+              {replyDrafts.get(event.id) && (
+                <InlineDraft
+                  draft={replyDrafts.get(event.id) as Draft}
+                  onChange={onDrafts}
+                  onEdit={onEditDrafts}
+                />
+              )}
+              <ActivityLine
+                activity={activity.byItem.get(event.id) ?? []}
+                name={name}
+                me={me?.user_id}
+              />
+            </TaskCard>
+          ) : event.type === 'code_ref.published' ? (
+            <CodeRefCard
               key={event.sequence}
               event={event}
               name={name}
-              session={session}
-              resolved={thread.resolutions.get(event.id) ?? {}}
-              {...(me ? { me: me.user_id } : {})}
+              me={me?.user_id}
+              supersededBy={superseded.get(event.id)}
             />
           ) : event.type === 'review.finding' ? (
             <li key={event.sequence}>
@@ -531,8 +609,14 @@ function Conversation({
               draft={replyDrafts.get(event.id)}
               onDrafts={onDrafts}
               onEditDrafts={onEditDrafts}
-              auto={auto}
-              sessionId={session.session_id}
+              gate={gate(event, String(event.payload.text ?? ''))}
+              activity={
+                <ActivityLine
+                  activity={activity.byItem.get(event.id) ?? []}
+                  name={name}
+                  me={me?.user_id}
+                />
+              }
             />
           ),
         )}
@@ -563,7 +647,7 @@ function InlineDraft({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  if (draft.kind !== 'reply') return null;
+  if (draft.kind === 'finding') return null;
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     setError(null);
@@ -585,10 +669,14 @@ function InlineDraft({
   return (
     <div className="mt-2 rounded-lg border border-dashed border-pear/50 bg-pear-soft/30 p-2 text-sm dark:bg-pear/10">
       <div className="text-xs text-slate-500">
-        Your {agentLabel(draft.source.harness === 'codex' ? 'codex' : 'claude-code')} drafted a
-        reply · private until you send it
+        Your {agentLabel(draft.source.harness === 'codex' ? 'codex' : 'claude-code')}{' '}
+        {draft.kind === 'code_ref'
+          ? `pushed ${draft.payload.branch} @ ${draft.payload.commit.slice(0, 7)} · the session hears about it when you send this`
+          : 'drafted a reply · private until you send it'}
       </div>
-      <p className="mt-1 whitespace-pre-wrap">{draft.payload.text}</p>
+      <p className="mt-1 whitespace-pre-wrap">
+        {draft.kind === 'code_ref' ? draft.payload.summary : draft.payload.text}
+      </p>
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
       <div className="mt-2 flex gap-2 text-xs">
         <button
@@ -660,8 +748,8 @@ function EventRow({
   draft,
   onDrafts,
   onEditDrafts,
-  auto = null,
-  sessionId,
+  gate,
+  activity,
 }: {
   event: WireEvent;
   name: string;
@@ -671,10 +759,9 @@ function EventRow({
   draft?: Draft | undefined;
   onDrafts?: () => void;
   onEditDrafts?: () => void;
-  auto?: boolean | null;
-  sessionId?: string;
+  gate?: React.ReactNode;
+  activity?: React.ReactNode;
 }) {
-  const [allowed, setAllowed] = useState(false);
   const time = new Date(event.received_at).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
@@ -687,35 +774,18 @@ function EventRow({
         </div>
         <MessageText text={String(event.payload.text ?? '')} labels={labels} />
         {draft && <InlineDraft draft={draft} onChange={onDrafts} onEdit={onEditDrafts} />}
-        {!draft && mentionedAgent(event, me) && (
-          <p className="mt-1 text-xs text-slate-500">
-            This mentions your {agentLabel(mentionedAgent(event, me) ?? '')}.{' '}
-            {auto === false && !allowed && sessionId ? (
-              <button
-                type="button"
-                className="rounded-md border px-2 py-0.5 font-semibold text-pear"
-                onClick={() =>
-                  void api
-                    .allowAgent(sessionId, event.id)
-                    .then(() => setAllowed(true))
-                    .catch(() => undefined)
-                }
-              >
-                Let my {agentLabel(mentionedAgent(event, me) ?? '')} handle this
-              </button>
-            ) : auto === false ? (
-              'Allowed: it picks this up while /pearcoder:listen runs, and its reply waits for your Send.'
-            ) : (
-              <>
-                It answers while /pearcoder:listen runs; or run{' '}
-                <code className="rounded bg-black/5 px-1 dark:bg-white/10">
-                  /pearcoder:discuss {event.id.slice(0, 8)}
-                </code>{' '}
-                in it.
-              </>
-            )}
-          </p>
-        )}
+        {!draft &&
+          mentionedAgent(event, me) &&
+          (gate ?? (
+            <p className="mt-1 text-xs text-slate-500">
+              This mentions your {agentLabel(mentionedAgent(event, me) ?? '')}. Run{' '}
+              <code className="rounded bg-black/5 px-1 dark:bg-white/10">
+                /pearcoder:discuss {event.id.slice(0, 8)}
+              </code>{' '}
+              in it to answer.
+            </p>
+          ))}
+        {activity}
       </li>
     );
   }
@@ -745,6 +815,7 @@ function Composer({
 }) {
   const [asking, setAsking] = useState(false);
   const [deciding, setDeciding] = useState(false);
+  const [tasking, setTasking] = useState(false);
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -818,6 +889,9 @@ function Composer({
         />
       )}
       {deciding && <DecisionForm session={session} onDone={() => setDeciding(false)} />}
+      {tasking && (
+        <TaskForm session={session} people={people} me={me} onDone={() => setTasking(false)} />
+      )}
       <form onSubmit={send}>
         {error && (
           <p role="alert" className="mb-2 text-sm text-red-600">
@@ -865,13 +939,16 @@ function Composer({
           }
           className="w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-pear disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/15 dark:bg-[#0c1522]"
         />
-        {!readOnly && !asking && !deciding && (
+        {!readOnly && !asking && !deciding && !tasking && (
           <div className="mt-2 flex gap-4 text-xs">
             <button type="button" onClick={() => setAsking(true)} className="text-pear underline">
               Ask someone for a review
             </button>
             <button type="button" onClick={() => setDeciding(true)} className="text-pear underline">
               Propose a decision
+            </button>
+            <button type="button" onClick={() => setTasking(true)} className="text-pear underline">
+              Create a task
             </button>
           </div>
         )}
