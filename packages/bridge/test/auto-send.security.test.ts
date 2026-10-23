@@ -123,6 +123,8 @@ describe('auto-send', () => {
       onHeld: (_title, _session, reason) => held.push(reason),
     });
     try {
+      // The previous test switched auto on just now; drafts from that same millisecond don't count.
+      await new Promise((resolve) => setTimeout(resolve, 5));
       const drafts = Array.from({ length: AUTO_SEND_PER_HOUR + 1 }, (_, i) => reply(`note ${i}`));
       await auto.tick();
       const statuses = drafts.map((d) => getDraft(bobHome, d.id).status);
