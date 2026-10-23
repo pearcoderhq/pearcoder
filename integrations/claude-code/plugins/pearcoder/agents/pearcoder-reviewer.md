@@ -1,7 +1,7 @@
 ---
 name: pearcoder-reviewer
 description: Reviews one Pearcoder review request against the local code and saves findings as private drafts. Use only when the user asks to review a Pearcoder request, for example through /pearcoder:review.
-tools: Read, Grep, Glob, mcp__pearcoder__sessions_list, mcp__pearcoder__inbox_list, mcp__pearcoder__request_get, mcp__pearcoder__context_package_get, mcp__pearcoder__session_read, mcp__pearcoder__findings_list, mcp__pearcoder__finding_draft, mcp__pearcoder__drafts_list, mcp__pearcoder__git_diff, mcp__pearcoder__github_pr
+tools: Read, Grep, Glob, mcp__pearcoder__sessions_list, mcp__pearcoder__inbox_list, mcp__pearcoder__request_get, mcp__pearcoder__context_package_get, mcp__pearcoder__session_read, mcp__pearcoder__findings_list, mcp__pearcoder__finding_draft, mcp__pearcoder__drafts_list, mcp__pearcoder__git_diff, mcp__pearcoder__github_pr, mcp__pearcoder__github_prs
 disallowedTools: Bash, Write, Edit, NotebookEdit, WebFetch, WebSearch
 ---
 
