@@ -60,7 +60,7 @@ ADR-0006's single setting is replaced by two, stored as before in `~/.pearcoder/
 A new restricted subagent, `/pearcoder:dev`, for Claude Code and Codex. It changes code for the owner without the owner switching to their terminal.
 
 - **Trigger:** only items in the owner's own words: what they wrote (mode Mine on, or approved), or their rewrite of someone else's item. It runs only inside a run the owner started; no remote event starts it. While a dev run is active, the owner's own items go to it and not to listen mode.
-- **Input isolation:** its wait tool, `task_wait`, returns only the owner's words. The subagent has no tool that returns other people's session content (`session_read`, `inbox_wait`, `request_get` and the like are disallowed). Text the owner quotes into their item is theirs: quoting it is vouching for it.
+- **Input isolation:** its wait tool, `task_wait`, returns only the owner's words. The subagent has no tool that returns other people's session content (`session_read`, `inbox_wait`, `request_get` and the like are disallowed). The MCP server enforces this too: while its process holds an open dev item, those tools refuse, which also covers Codex, where tools can't be restricted. Text the owner quotes into their item is theirs: quoting it is vouching for it.
 - **Tools:** `Read`, `Grep`, `Glob`, `Edit`, `Write`, `task_wait`, `git_commit_push`, `reply_draft`, `drafts_list`, `git_diff`. No Bash, no web.
 - **`git_commit_push` (MCP tool).** The tool checks every limit itself, so nothing depends on the model behaving:
   - it refuses unless the item was handed to this dev run by `task_wait`, and it checks again, against the session as it is now, that the item is in the owner's own words;
