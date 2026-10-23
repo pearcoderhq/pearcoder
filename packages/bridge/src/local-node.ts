@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import type { Duplex } from 'node:stream';
 import { getRequestListener } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { ClientError, renderReviewMarkdown } from '@pearcoderhq/client';
+import { ClientError, removeRecord, renderReviewMarkdown } from '@pearcoderhq/client';
 import { type DeviceIdentity, readProfile, redactValue, scanValue } from '@pearcoderhq/core';
 import {
   AgentHarnessSchema,
@@ -20,9 +20,11 @@ import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { WebSocketServer } from 'ws';
 import { z } from 'zod';
+import { startAutoSend } from './auto-send.js';
 import { DraftError, discardDraft, getDraft, listDrafts, updateDraft } from './drafts.js';
 import { SessionHub } from './hub.js';
 import { notify } from './notify.js';
+import { allowItem, isAuto, setAuto } from './policy.js';
 import { PublishBlockedError, publishDraft } from './publish.js';
 
 export const LOCAL_WS_PROTOCOL = 'pearcoder.local.v1';
@@ -163,6 +165,43 @@ export async function startLocalNode(options: LocalNodeOptions): Promise<Running
   app.get('/api/sessions', async (c) => {
     await hub.refresh();
     return c.json({ sessions: hub.sessions() });
+  });
+
+  // Archives a session on this device: its record and cursor go, nothing is sent to the host.
+  app.post('/api/sessions/:id/forget', async (c) => {
+    const id = c.req.param('id') as SessionId;
+    const session = hub.sessions().find((s) => s.session_id === id);
+    if (!session) throw new LocalHttpError(404, 'SESSION_NOT_FOUND', 'unknown session');
+    if (session.status === 'online') {
+      throw new LocalHttpError(
+        409,
+        'SESSION_ACTIVE',
+        'this session is live; leave it running or stop its host first',
+      );
+    }
+    removeRecord(options.home, id);
+    await hub.refresh();
+    return c.json({ forgotten: id });
+  });
+
+  app.get('/api/sessions/:id/agent-policy', (c) =>
+    c.json({ auto: isAuto(options.home, c.req.param('id')) }),
+  );
+
+  app.post('/api/sessions/:id/agent-policy', async (c) => {
+    const parsed = z.object({ auto: z.boolean() }).safeParse(await readJson(c));
+    if (!parsed.success)
+      throw new LocalHttpError(400, 'INVALID_REQUEST', 'auto must be true or false');
+    setAuto(options.home, c.req.param('id'), parsed.data.auto);
+    return c.json({ auto: parsed.data.auto });
+  });
+
+  // With auto off: the owner lets their agent handle one request or mention.
+  app.post('/api/sessions/:id/agent-allow', async (c) => {
+    const parsed = z.object({ event: z.string().min(1).max(64) }).safeParse(await readJson(c));
+    if (!parsed.success) throw new LocalHttpError(400, 'INVALID_REQUEST', 'event is required');
+    allowItem(options.home, c.req.param('id'), parsed.data.event);
+    return c.json({ allowed: parsed.data.event });
   });
 
   app.get('/api/sessions/:id/events', (c) => {
@@ -360,6 +399,19 @@ export async function startLocalNode(options: LocalNodeOptions): Promise<Running
       })
     : () => undefined;
 
+  // The owner's per-session "auto" setting decides whether agent drafts go out on their own.
+  const autoSend = startAutoSend({
+    home: options.home,
+    identity: options.identity,
+    startedAt: new Date(),
+    // Always told, even without --notify: the owner expected this to go out.
+    onHeld: (title, _sessionId, reason) =>
+      notify('Pearcoder', `Not sent automatically: "${title}" (${reason}). Check Drafts.`),
+    ...(options.notifications && {
+      onSent: (title: string) => notify('Pearcoder', `Your agent's draft was sent: "${title}"`),
+    }),
+  });
+
   const refresher = setInterval(() => void hub.refresh(), REFRESH_MS);
   refresher.unref();
   await hub.refresh();
@@ -372,6 +424,7 @@ export async function startLocalNode(options: LocalNodeOptions): Promise<Running
     hub,
     close: async () => {
       stopNotifications();
+      autoSend.stop();
       clearInterval(refresher);
       await hub.close();
       for (const client of wss.clients) client.terminate();

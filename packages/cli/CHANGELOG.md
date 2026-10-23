@@ -1,5 +1,16 @@
 # pearcoder
 
+## 0.4.0
+
+### Minor Changes
+
+- 3426cd2: Auto-reply. While `/pearcoder:listen` runs, your agent answers `@` mentions and review requests on its own, and Pearcoder sends its replies after a secret scan. It's on by default, with a banner in the web UI and a one-click "Turn off" per session (or `pearcoder agent auto off`). With auto off, you let your agent handle each item ("Let my Claude Code handle this", or `pearcoder agent allow <id>`) and its replies wait for Send. A draft that trips the secret scan is never sent automatically, at most 10 drafts per session per hour go out automatically, and agents never answer other agents.
+- db88ae9: Ask an agent to review from a mention: `@Hana's Claude Code review PR 42`, `… the changes in feat/retry against main`, or `… src/token.ts`. The listen and reviewer agents can now read GitHub PRs (through your `gh` login) and branch diffs (`git diff`), read-only. They draft findings plus a summary reply.
+
+### Patch Changes
+
+- aaa2f9c: Ended sessions show as "ended" in the web UI with a Forget button, and same-named sessions show their short id. `pearcoder attach` now mentions `/pearcoder:discuss` and `/pearcoder:listen`.
+
 ## 0.3.0
 
 ### Minor Changes

@@ -1,16 +1,19 @@
 // Covers: T01, T11, T12, T15
-import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import {
   agentIdFor,
+  allowItem,
   createDraft,
   draftTitle,
   listDrafts,
   PublishBlockedError,
   publishDraft,
+  setAuto,
 } from '@pearcoderhq/bridge';
 import { joinSession, removeRecord, writeRecord } from '@pearcoderhq/client';
 import { HostSession, loadOrCreateDeviceIdentity } from '@pearcoderhq/core';
@@ -44,6 +47,7 @@ const session = HostSession.create({
   sessionName: 'auth-review',
 });
 const bobHome = temp();
+const repoDir = temp();
 const bob = loadOrCreateDeviceIdentity(bobHome);
 let server: RunningSessionServer;
 let client: Client;
@@ -103,7 +107,18 @@ beforeAll(async () => {
     context_package: packageId,
   }).id;
 
-  const mcp = createPearcoderMcpServer({ home: bobHome, identity: bob });
+  // Bob's repository: main plus a feature branch that changes one line.
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: repoDir });
+  git('init', '-q', '-b', 'main');
+  writeFileSync(join(repoDir, 'token.ts'), 'export const ttl = 60;\n');
+  git('add', '.');
+  git('commit', '-qm', 'base');
+  git('checkout', '-qb', 'feature');
+  writeFileSync(join(repoDir, 'token.ts'), 'export const ttl = 3600;\n');
+  git('commit', '-qam', 'longer ttl');
+
+  const mcp = createPearcoderMcpServer({ home: bobHome, identity: bob, cwd: repoDir });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   await mcp.connect(serverSide);
   client = new Client({ name: 'claude-code', version: '9.9.9' });
@@ -367,5 +382,37 @@ describe('reply drafts (pearcoder-discuss)', () => {
     expect((await call('inbox_wait', { timeout_seconds: 1 })).text).toMatch(/^Nothing new\./);
     // inbox_list still shows the agent-written mention, labelled, for the owner to see.
     expect((await call('inbox_list')).text).toContain("(written by Hana's agent)");
+  });
+
+  it('with auto off, inbox_wait holds an item until the owner allows it (ADR-0006)', async () => {
+    setAuto(bobHome, session.sessionId, false);
+    try {
+      const id = hostAppend('message.created', {
+        text: "@Bob's Claude Code please check the retry logic",
+        agent_mentions: [{ user: bob.userId, agent: 'claude-code' }],
+      }).id;
+      const held = await call('inbox_wait', { timeout_seconds: 1 });
+      expect(held.text).toMatch(/^Nothing new\. 1 item waits for your owner to allow it/);
+      allowItem(bobHome, session.sessionId, id);
+      expect((await call('inbox_wait', { timeout_seconds: 1 })).text).toContain(`message ${id}`);
+    } finally {
+      setAuto(bobHome, session.sessionId, true);
+    }
+  });
+
+  it("git_diff shows a branch's changes, fenced, and refuses options, ranges and outside paths", async () => {
+    const { text, isError } = await call('git_diff', { base: 'main', head: 'feature' });
+    expect(isError).toBe(false);
+    expect(text).toContain('<untrusted_session_content author="git"');
+    expect(text).toContain('+export const ttl = 3600;');
+    for (const args of [
+      { base: '--output=/tmp/pwned' },
+      { base: 'main..feature' },
+      { base: 'main', paths: ['../../etc/passwd'] },
+      { base: 'main', paths: ['/etc/passwd'] },
+    ]) {
+      expect((await call('git_diff', args)).isError).toBe(true);
+    }
+    expect((await call('github_pr', { pr: '--repo evil/x' })).isError).toBe(true);
   });
 });

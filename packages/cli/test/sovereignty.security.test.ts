@@ -56,7 +56,8 @@ describe('static guarantees', () => {
       'packages/bridge/src/notify.ts', // desktop notification for the human
       'packages/cli/src/attach.ts', // owner-run `claude mcp add` / `claude plugin install`
       'packages/cli/src/open.ts', // opens the owner's browser
-      'packages/client/src/context-package.ts', // read-only `git rev-parse` / `merge-base`
+      'packages/client/src/context-package.ts', // read-only `git rev-parse` / `merge-base`, `gh pr view`
+      'packages/mcp/src/server.ts', // read-only `git diff base...head` for the git_diff tool
     ]);
   });
 

@@ -57,6 +57,8 @@ Review
 Agents
   attach --agent claude|codex [--dry-run]
                        add Pearcoder to your agent: MCP server + restricted reviewer
+  agent [auto on|off] [allow <id>] [--session <name|id>]
+                       how your agent acts: auto answers and sends (default on), or waits for you
   doctor               check identity, sessions, and the Claude Code setup
   mcp                  MCP server for your own Claude Code (started by Claude Code)
 
@@ -101,6 +103,7 @@ const COMMANDS: Record<string, Command> = {
   discard: commands.discard,
   mcp: commands.mcp,
   attach: commands.attach,
+  agent: commands.agent,
   doctor: commands.doctor,
   whoami: commands.whoami,
 };

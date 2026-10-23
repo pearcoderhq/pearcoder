@@ -146,6 +146,11 @@ export function App() {
           sessions={sessions}
           activeId={activeId}
           onSelect={setActiveId}
+          onForget={async (id) => {
+            await api.forgetSession(id).catch(() => undefined);
+            if (activeId === id) setActiveId(null);
+            await refresh().catch(() => undefined);
+          }}
           people={activePeople}
           me={me}
           inbox={inbox}
@@ -227,6 +232,7 @@ function Sidebar(props: {
   sessions: SessionView[];
   activeId: string | null;
   onSelect: (id: string) => void;
+  onForget: (id: string) => Promise<void>;
   people: Person[];
   me: Me | null;
   inbox: { event: WireEvent; session: SessionView }[];
@@ -238,21 +244,43 @@ function Sidebar(props: {
           Sessions
         </h2>
         <ul className="space-y-1">
-          {props.sessions.map((s) => (
-            <li key={s.session_id}>
-              <button
-                type="button"
-                onClick={() => props.onSelect(s.session_id)}
-                className={`w-full truncate rounded-lg px-3 py-2 text-left text-sm ${
-                  s.session_id === props.activeId
-                    ? 'bg-pear-soft font-semibold text-ink dark:bg-pear/30 dark:text-white'
-                    : 'hover:bg-black/5 dark:hover:bg-white/5'
-                }`}
-              >
-                # {s.session_name}
-              </button>
-            </li>
-          ))}
+          {props.sessions.map((s) => {
+            const ended = s.status === 'unreachable' || s.status === 'stopped';
+            // Same-named sessions (a host restarted without --persist) get their short id.
+            const twin = props.sessions.some(
+              (o) => o.session_id !== s.session_id && o.session_name === s.session_name,
+            );
+            return (
+              <li key={s.session_id} className="group flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => props.onSelect(s.session_id)}
+                  className={`min-w-0 flex-1 truncate rounded-lg px-3 py-2 text-left text-sm ${
+                    s.session_id === props.activeId
+                      ? 'bg-pear-soft font-semibold text-ink dark:bg-pear/30 dark:text-white'
+                      : 'hover:bg-black/5 dark:hover:bg-white/5'
+                  } ${ended ? 'text-slate-400' : ''}`}
+                >
+                  # {s.session_name}
+                  {twin && (
+                    <span className="text-xs text-slate-400"> {s.session_id.slice(2, 8)}</span>
+                  )}
+                  {ended && <span className="ml-1 text-xs">· ended</span>}
+                </button>
+                {ended && (
+                  <button
+                    type="button"
+                    title="Forget this session on this device"
+                    aria-label={`Forget ${s.session_name}`}
+                    onClick={() => void props.onForget(s.session_id)}
+                    className="rounded px-1.5 py-1 text-xs text-slate-400 hover:bg-black/5 hover:text-red-600 dark:hover:bg-white/5"
+                  >
+                    Forget
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </section>
       <section>
@@ -346,6 +374,20 @@ function Conversation({
   onDrafts: () => void;
   onEditDrafts: () => void;
 }) {
+  // The owner's per-session agent setting (ADR-0006); on unless they turned it off.
+  const [auto, setAuto] = useState<boolean | null>(null);
+  useEffect(() => {
+    api
+      .agentPolicy(session.session_id)
+      .then((p) => setAuto(p.auto))
+      .catch(() => setAuto(null));
+  }, [session.session_id]);
+  const myAgents = me
+    ? (participants(events).find((p) => p.userId === me.user_id)?.agents ?? [])
+    : [];
+  const toggleAuto = async (value: boolean) => {
+    setAuto((await api.setAgentPolicy(session.session_id, value)).auto);
+  };
   // The agent's pending reply drafts, shown under the message they answer.
   const replyDrafts = new Map(
     drafts
@@ -414,6 +456,29 @@ function Conversation({
 
   return (
     <>
+      {myAgents.length > 0 && auto !== null && (
+        <div
+          role="status"
+          className={`flex items-center gap-3 border-b px-8 py-2 text-sm ${
+            auto
+              ? 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100'
+              : 'border-black/5 text-slate-500 dark:border-white/10'
+          }`}
+        >
+          <span className="flex-1">
+            {auto
+              ? `Auto is on: while /pearcoder:listen runs, your ${agentLabel(myAgents[0] ?? '')} answers @mentions and review requests here, and Pearcoder sends its replies without asking you (after a secret scan).`
+              : `Auto is off: your ${agentLabel(myAgents[0] ?? '')} waits for you to let it handle each item, and its replies wait for Send.`}
+          </span>
+          <button
+            type="button"
+            onClick={() => void toggleAuto(!auto)}
+            className="rounded-md border border-current px-2 py-0.5 text-xs font-semibold"
+          >
+            {auto ? 'Turn off' : 'Turn on'}
+          </button>
+        </div>
+      )}
       <ol className="flex-1 space-y-1 overflow-y-auto px-8 py-6" aria-live="polite">
         {visible.map((event) =>
           event.type === 'request.created' ? (
@@ -466,6 +531,8 @@ function Conversation({
               draft={replyDrafts.get(event.id)}
               onDrafts={onDrafts}
               onEditDrafts={onEditDrafts}
+              auto={auto}
+              sessionId={session.session_id}
             />
           ),
         )}
@@ -593,6 +660,8 @@ function EventRow({
   draft,
   onDrafts,
   onEditDrafts,
+  auto = null,
+  sessionId,
 }: {
   event: WireEvent;
   name: string;
@@ -602,7 +671,10 @@ function EventRow({
   draft?: Draft | undefined;
   onDrafts?: () => void;
   onEditDrafts?: () => void;
+  auto?: boolean | null;
+  sessionId?: string;
 }) {
+  const [allowed, setAllowed] = useState(false);
   const time = new Date(event.received_at).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
@@ -617,12 +689,31 @@ function EventRow({
         {draft && <InlineDraft draft={draft} onChange={onDrafts} onEdit={onEditDrafts} />}
         {!draft && mentionedAgent(event, me) && (
           <p className="mt-1 text-xs text-slate-500">
-            This mentions your {agentLabel(mentionedAgent(event, me) ?? '')}. To draft an answer,
-            run{' '}
-            <code className="rounded bg-black/5 px-1 dark:bg-white/10">
-              /pearcoder:discuss {event.id.slice(0, 8)}
-            </code>{' '}
-            in it. The reply stays a private draft until you send it.
+            This mentions your {agentLabel(mentionedAgent(event, me) ?? '')}.{' '}
+            {auto === false && !allowed && sessionId ? (
+              <button
+                type="button"
+                className="rounded-md border px-2 py-0.5 font-semibold text-pear"
+                onClick={() =>
+                  void api
+                    .allowAgent(sessionId, event.id)
+                    .then(() => setAllowed(true))
+                    .catch(() => undefined)
+                }
+              >
+                Let my {agentLabel(mentionedAgent(event, me) ?? '')} handle this
+              </button>
+            ) : auto === false ? (
+              'Allowed: it picks this up while /pearcoder:listen runs, and its reply waits for your Send.'
+            ) : (
+              <>
+                It answers while /pearcoder:listen runs; or run{' '}
+                <code className="rounded bg-black/5 px-1 dark:bg-white/10">
+                  /pearcoder:discuss {event.id.slice(0, 8)}
+                </code>{' '}
+                in it.
+              </>
+            )}
           </p>
         )}
       </li>

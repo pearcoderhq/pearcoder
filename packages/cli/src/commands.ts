@@ -2,12 +2,15 @@ import { homedir } from 'node:os';
 import { dirname, join as joinPath } from 'node:path';
 import { type ParseArgsConfig, parseArgs } from 'node:util';
 import {
+  allowItem,
   discardDraft,
   draftTitle,
   getDraft,
+  isAuto,
   listDrafts,
   PublishBlockedError,
   publishDraft,
+  setAuto,
   startLocalNode,
 } from '@pearcoderhq/bridge';
 import {
@@ -644,6 +647,52 @@ async function isReachable(record: SessionRecord): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * How your agent acts in a session (ADR-0006): `auto on|off`, `allow <id>` (one item while auto
+ * is off), or no argument for the current setting.
+ */
+export async function agent(argv: string[], io: Io): Promise<number> {
+  const { values, positionals } = args(argv, {
+    session: { type: 'string' },
+    json: { type: 'boolean', default: false },
+  });
+  const home = homeOf(io);
+  const [action, value] = positionals;
+  if (action === 'auto' && (value === 'on' || value === 'off')) {
+    const record = values.session ? selectRecord(home, values.session) : undefined;
+    setAuto(home, record?.session_id, value === 'on');
+    io.stdout(
+      values.json
+        ? JSON.stringify({ session: record?.session_id ?? null, auto: value === 'on' })
+        : value === 'on'
+          ? `Auto is on${record ? ` in "${record.session_name}"` : ' by default'}: while /pearcoder:listen runs, your agent answers mentions and requests, and Pearcoder sends its drafts after the secret scan.`
+          : `Auto is off${record ? ` in "${record.session_name}"` : ' by default'}: your agent waits for \`pearcoder agent allow <id>\` (or the UI) before handling an item, and its drafts wait for you to send them.`,
+    );
+    return 0;
+  }
+  if (action === 'allow' && value) {
+    const record = selectRecord(home, values.session);
+    const client = await connect(record, loadOrCreateDeviceIdentity(home));
+    const id = expandId(await client.history(), value);
+    allowItem(home, record.session_id, id);
+    io.stdout(
+      values.json ? JSON.stringify({ allowed: id }) : `Your agent may handle #${short(id)} now.`,
+    );
+    return 0;
+  }
+  if (action)
+    throw new UsageError('pearcoder agent [auto on|off] [allow <id>] [--session <name|id>]');
+  const rows = listRecords(home).map((r) => ({
+    session: r.session_name,
+    session_id: r.session_id,
+    auto: isAuto(home, r.session_id),
+  }));
+  if (values.json) io.stdout(JSON.stringify({ sessions: rows }));
+  else
+    for (const r of rows) io.stdout(`${r.session}  ${r.session_id}  auto ${r.auto ? 'on' : 'off'}`);
+  return 0;
 }
 
 /** Forgets a session on this device (record and cursor). It does not leave or end it for others. */
@@ -1446,7 +1495,7 @@ export async function attach(argv: string[], io: Io): Promise<number> {
       '- MCP server `pearcoder` registered for your user (read sessions, save private drafts; it cannot publish).',
     );
     io.stdout(
-      '- Plugin installed: /pearcoder:review runs the restricted pearcoder-reviewer subagent (no shell, no edits, no web).',
+      '- Plugin installed: /pearcoder:review, /pearcoder:discuss and /pearcoder:listen, each in its own restricted subagent (no shell, no edits, no web).',
     );
     io.stdout(
       '- Your sessions now show "Claude Code" next to your name, so people can address review requests to it. It still only runs when you start it.',
@@ -1459,6 +1508,9 @@ export async function attach(argv: string[], io: Io): Promise<number> {
     );
     io.stdout(
       '  3. Check the drafts it saved (`pearcoder drafts` or the web UI) and publish the ones you agree with.',
+    );
+    io.stdout(
+      '  Or run /pearcoder:listen: your agent keeps watch, drafting findings for review requests and answers to @mentions of it. /pearcoder:listen once handles what is waiting and stops.',
     );
     io.stdout(
       'The first time, Claude Code asks to allow the Pearcoder tools: choose "always allow" for them.',
@@ -1516,7 +1568,9 @@ async function attachCodex(
     io.stdout(
       '- MCP server `pearcoder` registered (read sessions, save private drafts; it cannot publish).',
     );
-    io.stdout('- Installed the pearcoder-reviewer subagent and the pearcoder-review skill.');
+    io.stdout(
+      '- Installed the pearcoder-reviewer, pearcoder-discuss and pearcoder-listen subagents and their skills.',
+    );
     io.stdout(
       'Review with a read-only sandbox: codex --sandbox read-only, then ask it to use the pearcoder-review skill (it picks your oldest open request; ids are in `pearcoder inbox`).',
     );

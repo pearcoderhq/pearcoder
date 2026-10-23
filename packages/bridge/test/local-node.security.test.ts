@@ -11,7 +11,7 @@ import {
   recordAttachedAgent,
   writeProfile,
 } from '@pearcoderhq/core';
-import type { SessionId } from '@pearcoderhq/protocol';
+import { newSessionId, type SessionId } from '@pearcoderhq/protocol';
 import { type RunningSessionServer, startSessionServer } from '@pearcoderhq/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
@@ -191,6 +191,40 @@ describe('local node', () => {
       (await call('GET', `/api/sessions/${session.sessionId}/events`)).body,
     ).events;
     expect(events.map((e: { type: string }) => e.type)).toContain('message.created');
+  });
+
+  it('forgets an ended session on request, but never a live one', async () => {
+    const live = await call('POST', `/api/sessions/${session.sessionId}/forget`, {
+      headers: { origin: node.url },
+      body: {},
+    });
+    expect(JSON.parse(live.body).error.code).toBe('SESSION_ACTIVE');
+
+    const gone = newSessionId();
+    writeRecord(hostHome, {
+      v: 1,
+      session_id: gone,
+      session_name: 'ended',
+      host_user_id: hostIdentity.userId,
+      host_public_key: hostIdentity.publicKey,
+      role: 'member',
+      addresses: ['http://127.0.0.1:9'],
+      joined_at: new Date(0).toISOString(),
+    });
+    await until(async () => {
+      const { sessions } = JSON.parse((await call('GET', '/api/sessions')).body);
+      return sessions.some(
+        (s: { session_id: string; status: string }) =>
+          s.session_id === gone && s.status === 'unreachable',
+      );
+    });
+    const forgotten = await call('POST', `/api/sessions/${gone}/forget`, {
+      headers: { origin: node.url },
+      body: {},
+    });
+    expect(forgotten.status).toBe(200);
+    const { sessions } = JSON.parse((await call('GET', '/api/sessions')).body);
+    expect(sessions.map((s: { session_id: string }) => s.session_id)).not.toContain(gone);
   });
 
   it('streams live updates over an authenticated, same-origin WebSocket only', async () => {
