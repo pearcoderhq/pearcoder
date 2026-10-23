@@ -155,6 +155,8 @@ export const api = {
     }),
   sessions: () => call<{ sessions: SessionView[] }>('GET', '/api/sessions'),
   events: (id: string) => call<{ events: WireEvent[] }>('GET', `/api/sessions/${id}/events`),
+  forgetSession: (id: string) =>
+    call<{ forgotten: string }>('POST', `/api/sessions/${id}/forget`, {}),
   say: (id: string, text: string) =>
     call<{ sequence: number }>('POST', `/api/sessions/${id}/messages`, { text }),
 };

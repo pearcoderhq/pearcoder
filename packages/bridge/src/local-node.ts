@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import type { Duplex } from 'node:stream';
 import { getRequestListener } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { ClientError, renderReviewMarkdown } from '@pearcoderhq/client';
+import { ClientError, removeRecord, renderReviewMarkdown } from '@pearcoderhq/client';
 import { type DeviceIdentity, readProfile, redactValue, scanValue } from '@pearcoderhq/core';
 import {
   AgentHarnessSchema,
@@ -163,6 +163,23 @@ export async function startLocalNode(options: LocalNodeOptions): Promise<Running
   app.get('/api/sessions', async (c) => {
     await hub.refresh();
     return c.json({ sessions: hub.sessions() });
+  });
+
+  // Archives a session on this device: its record and cursor go, nothing is sent to the host.
+  app.post('/api/sessions/:id/forget', async (c) => {
+    const id = c.req.param('id') as SessionId;
+    const session = hub.sessions().find((s) => s.session_id === id);
+    if (!session) throw new LocalHttpError(404, 'SESSION_NOT_FOUND', 'unknown session');
+    if (session.status === 'online') {
+      throw new LocalHttpError(
+        409,
+        'SESSION_ACTIVE',
+        'this session is live; leave it running or stop its host first',
+      );
+    }
+    removeRecord(options.home, id);
+    await hub.refresh();
+    return c.json({ forgotten: id });
   });
 
   app.get('/api/sessions/:id/events', (c) => {

@@ -1446,7 +1446,7 @@ export async function attach(argv: string[], io: Io): Promise<number> {
       '- MCP server `pearcoder` registered for your user (read sessions, save private drafts; it cannot publish).',
     );
     io.stdout(
-      '- Plugin installed: /pearcoder:review runs the restricted pearcoder-reviewer subagent (no shell, no edits, no web).',
+      '- Plugin installed: /pearcoder:review, /pearcoder:discuss and /pearcoder:listen, each in its own restricted subagent (no shell, no edits, no web).',
     );
     io.stdout(
       '- Your sessions now show "Claude Code" next to your name, so people can address review requests to it. It still only runs when you start it.',
@@ -1459,6 +1459,9 @@ export async function attach(argv: string[], io: Io): Promise<number> {
     );
     io.stdout(
       '  3. Check the drafts it saved (`pearcoder drafts` or the web UI) and publish the ones you agree with.',
+    );
+    io.stdout(
+      '  Or run /pearcoder:listen: your agent keeps watch, drafting findings for review requests and answers to @mentions of it. /pearcoder:listen once handles what is waiting and stops.',
     );
     io.stdout(
       'The first time, Claude Code asks to allow the Pearcoder tools: choose "always allow" for them.',
@@ -1516,7 +1519,9 @@ async function attachCodex(
     io.stdout(
       '- MCP server `pearcoder` registered (read sessions, save private drafts; it cannot publish).',
     );
-    io.stdout('- Installed the pearcoder-reviewer subagent and the pearcoder-review skill.');
+    io.stdout(
+      '- Installed the pearcoder-reviewer, pearcoder-discuss and pearcoder-listen subagents and their skills.',
+    );
     io.stdout(
       'Review with a read-only sandbox: codex --sandbox read-only, then ask it to use the pearcoder-review skill (it picks your oldest open request; ids are in `pearcoder inbox`).',
     );
