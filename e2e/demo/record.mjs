@@ -268,7 +268,7 @@ writeFileSync(
       agentStart: (marks.agentStart - marks.start) / 1000,
       agentEnd: (marks.agentEnd - marks.start) / 1000,
       end: (marks.end - marks.start) / 1000,
-      branch: git('branch', '--list', 'pearcoder/*').replace('*', '').trim(),
+      branch: git('branch', '--list', '--format=%(refname:short)', 'pearcoder/*'),
     },
     null,
     2,
