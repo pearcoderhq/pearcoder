@@ -175,11 +175,14 @@ export function mentionsOf(events: SequencedEvent[], userId: string): MentionVie
   );
   const out: MentionView[] = [];
   for (const e of events) {
-    if (e.type !== 'message.created' || e.actor_user_id === userId || replied.has(e.id)) continue;
-    const people = (e.payload.mentions ?? []) as string[];
+    if (e.type !== 'message.created' || replied.has(e.id)) continue;
+    const own = e.actor_user_id === userId;
+    // You don't mention yourself, but you do ask your own agent for things.
+    const people = own ? [] : ((e.payload.mentions ?? []) as string[]);
     const agent = (
       (e.payload.agent_mentions ?? []) as { user: string; agent: AgentHarness }[]
     ).find((m) => m.user === userId);
+    if (own && e.actor_agent_id) continue;
     if (!people.includes(userId) && !agent) continue;
     out.push({
       id: e.id,
