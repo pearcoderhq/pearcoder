@@ -5,7 +5,7 @@
     {
       "name": "pearcoder",
       "source": "./plugins/pearcoder",
-      "description": "Review Pearcoder requests in your own Claude Code with a restricted reviewer that can only read code and save private drafts."
+      "description": "Review, discuss, listen and build in Pearcoder sessions from your own Claude Code, with restricted subagents."
     }
   ]
 }
