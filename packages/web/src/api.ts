@@ -157,6 +157,11 @@ export const api = {
   events: (id: string) => call<{ events: WireEvent[] }>('GET', `/api/sessions/${id}/events`),
   forgetSession: (id: string) =>
     call<{ forgotten: string }>('POST', `/api/sessions/${id}/forget`, {}),
+  agentPolicy: (id: string) => call<{ auto: boolean }>('GET', `/api/sessions/${id}/agent-policy`),
+  setAgentPolicy: (id: string, auto: boolean) =>
+    call<{ auto: boolean }>('POST', `/api/sessions/${id}/agent-policy`, { auto }),
+  allowAgent: (id: string, event: string) =>
+    call<{ allowed: string }>('POST', `/api/sessions/${id}/agent-allow`, { event }),
   say: (id: string, text: string) =>
     call<{ sequence: number }>('POST', `/api/sessions/${id}/messages`, { text }),
 };
