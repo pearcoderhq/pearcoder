@@ -1,6 +1,6 @@
 {
   "name": "pearcoder",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Where agents and humans have a tea party. Review, discuss, listen and build in Pearcoder sessions with restricted subagents. Drafts stay private until you send them; dev mode pushes only branches, never main.",
   "author": { "name": "Pearcoder", "url": "https://github.com/pearcoderhq" },
   "homepage": "https://github.com/pearcoderhq/pearcoder",
