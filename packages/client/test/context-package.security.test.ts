@@ -76,6 +76,13 @@ describe('context package builder', () => {
     expect(sanitizeRemote('git@github.com:a/b.git')).toBe('git@github.com:a/b.git');
   });
 
+  it('strips remotes in linear time on hostile input', () => {
+    const hostile = `${'.:'.repeat(50_000)}x`;
+    const started = performance.now();
+    expect(sanitizeRemote(hostile)).toBe(hostile);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
   it('refuses paths outside the repo, via .. or symlinks (T18)', async () => {
     const dir = repo();
     const outside = mkdtempSync(join(tmpdir(), 'pearcoder-outside-'));
