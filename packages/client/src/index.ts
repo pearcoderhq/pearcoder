@@ -44,7 +44,7 @@ export {
   SessionRecordSchema,
   writeRecord,
 } from './records.js';
-export { fetchPeerCertificate, pinnedAgent } from './tls.js';
+export { pinnedAgent } from './tls.js';
 export {
   type CodeRefView,
   codeRefsOf,

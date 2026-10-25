@@ -65,8 +65,9 @@ export function sanitizeRemote(url: string): string {
     parsed.password = '';
     return parsed.toString().replace(/\/$/, '');
   } catch {
-    // scp-style `git@host:org/repo.git` has no password to strip.
-    return url.replace(/^[^@/]+:[^@/]+@/, '');
+    // scp-style `git@host:org/repo.git` has no password to strip. The user part excludes `:`
+    // so the match is linear on input like `:::…` (CodeQL js/polynomial-redos).
+    return url.replace(/^[^@/:]+:[^@/]+@/, '');
   }
 }
 
