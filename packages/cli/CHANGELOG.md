@@ -1,5 +1,15 @@
 # pearcoder
 
+## 0.7.0
+
+### Minor Changes
+
+- f2a3f98: The web UI points out a request for work that mentions nobody, so no agent would see it, and offers to mention your own agent in one click.
+
+### Patch Changes
+
+- 6381672: Fix a slow regular expression when stripping credentials from git remote URLs, and check the pinned host certificate inside the TLS probe so an unpinned certificate is never returned.
+
 ## 0.6.0
 
 ### Minor Changes
