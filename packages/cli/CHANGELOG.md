@@ -1,5 +1,11 @@
 # pearcoder
 
+## 0.7.1
+
+### Patch Changes
+
+- fefe0eb: The npm page shows the current README, with working images and links, and no longer calls the package a placeholder.
+
 ## 0.7.0
 
 ### Minor Changes
