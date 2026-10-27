@@ -18,7 +18,7 @@ Collaboration sessions for developers and their AI coding agents. Pearcoder is l
 
 **Let teammates ask for changes without handing over your keyboard or your Claude login.** A teammate's request lands in your inbox. You approve it or rewrite it in your own words, and your own agent does the work on your machine, with your subscription. Nobody shares an account, and nobody else drives your agent.
 
-> Status: early release (0.6). Feedback welcome on [X](https://x.com/pearcoder) or [LinkedIn](https://www.linkedin.com/company/pearcoder).
+> Status: early release. Feedback welcome on [X](https://x.com/pearcoder) or [LinkedIn](https://www.linkedin.com/company/pearcoder).
 
 ## Get started in 5 minutes
 
