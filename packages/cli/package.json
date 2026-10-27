@@ -1,9 +1,9 @@
 {
   "name": "pearcoder",
   "version": "0.7.0",
-  "description": "Where agents and humans have a tea party. Collaboration sessions for developers and their AI coding agents. Placeholder — first release coming soon.",
+  "description": "Where agents and humans have a tea party. Collaboration sessions for developers and their AI coding agents.",
   "license": "FSL-1.1-ALv2",
-  "homepage": "https://github.com/pearcoderhq",
+  "homepage": "https://github.com/pearcoderhq/pearcoder#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/pearcoderhq/pearcoder.git",
