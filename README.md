@@ -16,45 +16,61 @@ Collaboration sessions for developers and their AI coding agents. Pearcoder is l
 
 **Nobody can run your agent but you, and that includes Pearcoder.** Colleagues can ask, discuss, and share. Your agent only touches Pearcoder when you ask it to, and nothing it writes leaves your machine until you approve it.
 
-> Status: early release (0.5). Feedback welcome on [X](https://x.com/pearcoder) or [LinkedIn](https://www.linkedin.com/company/pearcoder).
+> Status: early release (0.6). Feedback welcome on [X](https://x.com/pearcoder) or [LinkedIn](https://www.linkedin.com/company/pearcoder).
 
 ## Get started in 5 minutes
 
-You need [Node.js](https://nodejs.org) 22.13 or newer (check with `node --version`). Every person installs Pearcoder on their own machine:
+You need [Node.js](https://nodejs.org) 22.13 or newer (check with `node --version`). Every person installs Pearcoder on their own machine and connects their own agent:
 
 ```bash
 npm install -g pearcoder
 pearcoder whoami --set-name "Your Name"
+pearcoder attach --agent claude          # or --agent codex
 ```
 
-### 1. Start a session (one person)
+### 1. Start or join a session
+
+One person hosts:
 
 ```bash
 pearcoder host --name auth-review --lan
 ```
 
-This prints an invitation (`pc1_…`) and opens the web UI. Send the invitation privately (Slack DM, for example). It works once and expires in 24 hours. Leave the command running: the session lasts until you press Ctrl-C.
+This prints an invitation (`pc1_…`) and opens the web UI. Send the invitation privately (Slack DM, for example). It works once and expires in 24 hours. Leave the command running: the session lasts until you press Ctrl-C. Teammates must be on the same network, or the same Tailscale or WireGuard network. To try it alone on one machine, leave out `--lan`.
 
-Teammates must be on the same network, or the same Tailscale or WireGuard network. To try it alone on one machine, leave out `--lan`.
-
-### 2. Join (everyone else)
+Everyone else joins:
 
 ```bash
 pearcoder join pc1_…
 pearcoder ui
 ```
 
-`pearcoder ui` opens the session in your browser. Chat, review requests, findings and decisions all happen there. Type `@` to mention someone or someone's agent (`@Alice's Claude Code`): it lands in their inbox. Everything also works from the terminal: `pearcoder say "@Alice hi"`, `pearcoder watch`.
+`pearcoder ui` opens the session in your browser. Type `@` to mention someone or someone's agent (`@Alice's Claude Code`): it lands in their inbox.
 
-### 3. Let your own agent help review (optional)
+### 2. Let your agent listen and build
 
-Run this once to connect your Claude Code (or `--agent codex` for Codex):
+Open Claude Code in your repository and run:
 
-```bash
-pearcoder attach --agent claude
+```text
+/pearcoder:listen     # your agent drafts findings for review requests and answers for @mentions of it
+/pearcoder:dev        # your agent works on your own items and pushes a branch
 ```
 
-Then the review loop:
+**Listen mode** keeps watch while it runs. For each new review request it drafts a finding, and for each `@` mention of your agent it drafts an answer. A mention can ask for work: `@Hana's Claude Code which PRs wait for my review?`, `… review PR 42`, `… the changes in feat/retry against main`, or `… src/token.ts`. `/pearcoder:listen once` handles what's waiting and stops.
+
+**Dev mode** works on your own items: what you @mention your agent with, tasks you gave it (`pearcoder task "Retry on 503" --to me --agent claude`), or someone's item you rewrote and approved. It edits the repository and pushes a branch through `git_commit_push`. That tool never pushes `main`, `master`, the default branch or branches you protect. It never forces, runs with git hooks off, and refuses secrets and oversized changes. The session then sees "your agent pushed `pearcoder/retry` @ `abc1234`". Code itself never goes through Pearcoder: people fetch and review the commit with git, as with any colleague's branch.
+
+With Codex, ask it to use the `pearcoder-listen` or `pearcoder-dev` skill (run dev mode with `codex --sandbox workspace-write`). See [integrations/codex](integrations/codex/README.md).
+
+Nobody's agent ever starts because someone else asked. Requests and mentions only show up in people's inboxes, and other people's items wait for your approval (see [auto modes](#auto-modes)).
+
+## More commands
+
+### Talk
+
+Chat, review requests, findings and decisions all happen in the web UI. Everything also works from the terminal: `pearcoder say "@Alice hi"`, `pearcoder watch`, `pearcoder inbox`. Answer a mention yourself with `/pearcoder:discuss <id>` (your agent drafts it) or `pearcoder say --reply <id> "…"`.
+
+### Review
 
 1. **Ask for a review.** In the UI, use "Ask someone for a review" and pick a person, or their agent ("Alice's Claude Code"). You can pick your own agent too. From the terminal:
 
@@ -64,34 +80,36 @@ Then the review loop:
    pearcoder request --to Alice --for-agent claude "Review the token rotation"   # address her Claude Code
    ```
 
-2. **Review with your agent.** Alice sees the request in her inbox (web UI or `pearcoder inbox`), opens Claude Code in the repository and types `/pearcoder:review`. With no id it takes her oldest open request. Her agent reads the request and the code and saves its findings as **private drafts**. It can't run commands, edit files or post anything.
-3. **Publish.** Alice checks the drafts in the UI's Drafts panel (or with `pearcoder drafts`), edits them, and publishes the ones she agrees with.
+2. **Review with your agent.** Alice sees the request in her inbox (web UI or `pearcoder inbox`), opens Claude Code in the repository and types `/pearcoder:review` (or lets `/pearcoder:listen` pick it up). With no id it takes her oldest open request. Her agent reads the request and the code and saves its findings as **private drafts**. It can't run commands, edit files or post anything.
+3. **Publish.** Alice checks the drafts in the UI's Drafts panel (or with `pearcoder drafts`), edits them, and publishes the ones she agrees with (`pearcoder publish <draft-id>`).
 4. **Decide and keep the result:**
 
    ```bash
    pearcoder findings                       # what was found, and what is still open
    pearcoder resolve <id> fixed             # short ids from the listings work
+   pearcoder decide "Rotate tokens hourly" --decision "…"
    pearcoder export --out review.md         # the consolidated review: findings, decisions, action items
    pearcoder github-review 42               # preview the findings as one GitHub PR review; add --post to post it
    ```
 
-Want your agent to keep up on its own? Run `/pearcoder:listen` in Claude Code. While it runs, it drafts a finding for each new review request and an answer for each `@` mention of your agent. A mention can ask for work: `@Hana's Claude Code which PRs wait for my review?`, `… review PR 42`, `… the changes in feat/retry against main`, or `… src/token.ts`. `/pearcoder:listen once` handles what's waiting and stops. Without the listener, answer a mention yourself with `/pearcoder:discuss <id>` (your agent drafts it) or `pearcoder say --reply <id> "…"`.
+### Tasks
+
+Tasks say who does what: `pearcoder task "Retry on 503" --to Hana`, or `--to me --agent claude` to give it to your own agent (also in the UI: "Create a task"). `pearcoder tasks` lists open tasks and who has them. Everyone sees what each agent is doing (waiting for its owner, working, done), never what it reads or writes. `pearcoder agent stop <id>` (or Stop in the UI) ends a run's work on an item.
+
+### Auto modes
 
 Your agent has two auto modes per session (the UI's agent bar, or `pearcoder agent auto mine|others on|off`):
 
 - **Mine**, on by default: your own messages and tasks go straight to your agent, and Pearcoder sends its answers after a secret scan.
-- **Others**, off by default: other people's mentions, requests and tasks wait for you. Approve one, decline it, or rewrite it and approve your version (`pearcoder agent allow <id> --text "…"`). Your agent reads your version, and the session only sees "approved with edits". Turning it on lets anyone in the session make your agent answer unseen; the banner says so.
+- **Others**, off by default: other people's mentions, requests and tasks wait for you. Approve one (`pearcoder agent allow <id>`), decline it (`pearcoder agent decline <id>`), or rewrite it and approve your version (`pearcoder agent allow <id> --text "…"`). Your agent reads your version, and the session only sees "approved with edits". Turning it on lets anyone in the session make your agent answer unseen; the banner says so.
 
-### Build together
-
-Tasks say who does what: `pearcoder task "Retry on 503" --to Hana`, or `--to me --agent claude` to give it to your own agent (also in the UI: "Create a task"). Run `/pearcoder:dev` in Claude Code and your agent works on your own items: what you @mention it with, tasks you gave it, or someone's item you rewrote and approved. It edits the repository and pushes a branch through `git_commit_push`. That tool never pushes `main`, `master`, the default branch or branches you protect. It never forces, runs with git hooks off, and refuses secrets and oversized changes. The session then sees "your agent pushed `pearcoder/retry` @ `abc1234`". Code itself never goes through Pearcoder: people fetch and review the commit with git, as with any colleague's branch. Everyone sees what each agent is doing (waiting for its owner, working, done), never what it reads or writes. `pearcoder agent stop <id>` (or Stop in the UI) ends a run's work on an item.
-
-Nobody's agent ever starts because someone else asked. Requests and mentions only show up in people's inboxes.
+`pearcoder agent status off` stops sharing your agent's activity.
 
 ### Handy to know
 
 - `pearcoder --help` lists every command. Every command takes `--json`.
 - `pearcoder host --name auth-review --persist` keeps the session across restarts. Continue it later with `pearcoder host --resume auth-review`.
+- `pearcoder invite` creates another invitation (host only).
 - `pearcoder doctor` checks your setup. `pearcoder status` lists your sessions; `pearcoder forget <name>` removes one that ended.
 - **Upgrading:** `npm install -g pearcoder`, then `pearcoder attach --agent claude` again so Claude Code gets new commands.
 - Your device key stays in `~/.pearcoder/` and never leaves your machine. Keep the web UI link private: it lets the browser act as you.
