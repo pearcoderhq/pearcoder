@@ -129,6 +129,22 @@ test('edit and approve, tasks for an agent, and pushed commits', async ({ browse
   // Alice's text stays on her machine.
   await expect(hanaPage.getByText('max of 3 retries')).toHaveCount(0);
 
+  // A request for work that mentions nobody reaches no agent: Alice gets a one-click fix to
+  // address her own agent. Hana has no agent attached, so she gets no hint.
+  const aliceMessage = alicePage.getByLabel('Message', { exact: true });
+  const hanaMessage = hanaPage.getByLabel('Message', { exact: true });
+  await aliceMessage.fill('fix the flaky retry test');
+  await expect(alicePage.getByText('This mentions no one, so no agent will see it.')).toBeVisible();
+  await alicePage.getByRole('button', { name: 'Mention your Claude Code' }).click();
+  await expect(aliceMessage).toHaveValue("@Alice's Claude Code fix the flaky retry test");
+  await expect(alicePage.getByText('This mentions no one, so no agent will see it.')).toHaveCount(
+    0,
+  );
+  await aliceMessage.fill('');
+  await hanaMessage.fill('fix the flaky retry test');
+  await expect(hanaPage.getByText('This mentions no one, so no agent will see it.')).toHaveCount(0);
+  await hanaMessage.fill('');
+
   // Hana gives Alice's agent a task. Alice decides; Hana is told so.
   await hanaPage.getByRole('button', { name: 'Create a task' }).click();
   await hanaPage.getByLabel('Task title').fill('Add jitter to the backoff');

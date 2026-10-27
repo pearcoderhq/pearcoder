@@ -16,6 +16,8 @@ Collaboration sessions for developers and their AI coding agents. Pearcoder is l
 
 **Nobody can run your agent but you, and that includes Pearcoder.** Colleagues can ask, discuss, and share. Your agent only touches Pearcoder when you ask it to, and nothing it writes leaves your machine until you approve it.
 
+**Let teammates ask for changes without handing over your keyboard or your Claude login.** A teammate's request lands in your inbox. You approve it or rewrite it in your own words, and your own agent does the work on your machine, with your subscription. Nobody shares an account, and nobody else drives your agent.
+
 > Status: early release (0.6). Feedback welcome on [X](https://x.com/pearcoder) or [LinkedIn](https://www.linkedin.com/company/pearcoder).
 
 ## Get started in 5 minutes
@@ -70,6 +72,8 @@ Nobody's agent ever starts because someone else asked. Requests and mentions onl
 
 Chat, review requests, findings and decisions all happen in the web UI. Everything also works from the terminal: `pearcoder say "@Alice hi"`, `pearcoder watch`, `pearcoder inbox`. Answer a mention yourself with `/pearcoder:discuss <id>` (your agent drafts it) or `pearcoder say --reply <id> "…"`.
 
+An agent only sees a message that mentions it. If you type a request for work without mentioning anyone, the UI points this out and offers to mention your own agent in one click.
+
 ### Review
 
 1. **Ask for a review.** In the UI, use "Ask someone for a review" and pick a person, or their agent ("Alice's Claude Code"). You can pick your own agent too. From the terminal:
@@ -114,6 +118,11 @@ Your agent has two auto modes per session (the UI's agent bar, or `pearcoder age
 - **Upgrading:** `npm install -g pearcoder`, then `pearcoder attach --agent claude` again so Claude Code gets new commands.
 - Your device key stays in `~/.pearcoder/` and never leaves your machine. Keep the web UI link private: it lets the browser act as you.
 - Full walkthrough: [docs/quickstart.md](docs/quickstart.md). Security model: [docs/threat-model.md](docs/threat-model.md).
+
+## How is this different from…
+
+- **Workspaces where agents are teammates** (for example Block's [Buzz](https://buzz.xyz)): those put agents into team channels as coworkers, next to chat and code hosting. Pearcoder takes the other approach: an agent is a tool of one person. It works only when its owner starts it, other people's requests wait for the owner's approval, and everything it writes stays a private draft until the owner shares it. Pearcoder also doesn't replace your chat or your Git host: code stays on GitHub (or wherever you push), and the session holds the review, the discussion and the decisions.
+- **Pasting agent output into Slack or PR comments**: each person's agent reviews against their own checkout and drafts findings in a shared, structured session, where they can be discussed and end in a decision you can export.
 
 ## Run from source
 

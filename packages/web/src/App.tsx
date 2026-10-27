@@ -26,6 +26,7 @@ import {
   agentLabel,
   candidatesFor,
   isOnline,
+  looksLikeAgentTask,
   mentionedAgent,
   mergeEvents,
   openMentionsFor,
@@ -830,6 +831,14 @@ function Composer({
           .filter((c) => c.user !== me || c.agent)
           .filter((c) => c.label.toLowerCase().startsWith(query.toLowerCase()))
           .slice(0, 6);
+  // A request for work that mentions nobody reaches no agent: offer to address the owner's own.
+  const allCandidates = candidatesFor(people);
+  const myAgents = allCandidates.filter((c) => c.user === me && c.agent);
+  const unaddressed =
+    !readOnly &&
+    myAgents.length > 0 &&
+    query === undefined &&
+    looksLikeAgentTask(text, allCandidates);
   const pickSuggestion = (label: string) => {
     setText(`${text.slice(0, text.length - (query?.length ?? 0))}${label} `);
     setHighlight(0);
@@ -924,6 +933,21 @@ function Composer({
               </li>
             ))}
           </ul>
+        )}
+        {unaddressed && (
+          <p className="mb-2 text-xs text-slate-500">
+            This mentions no one, so no agent will see it.{' '}
+            {myAgents.map((c) => (
+              <button
+                key={c.label}
+                type="button"
+                onClick={() => setText(`@${c.label} ${text.trimStart()}`)}
+                className="mr-2 text-pear underline"
+              >
+                Mention your {agentLabel(c.agent ?? '')}
+              </button>
+            ))}
+          </p>
         )}
         <textarea
           aria-label="Message"
