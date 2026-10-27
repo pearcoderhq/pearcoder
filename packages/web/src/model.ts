@@ -1,4 +1,8 @@
-import { type MentionCandidate, mentionCandidates } from '@pearcoderhq/protocol/mentions';
+import {
+  findMentions,
+  type MentionCandidate,
+  mentionCandidates,
+} from '@pearcoderhq/protocol/mentions';
 import type { WireEvent } from './api';
 
 export interface Person {
@@ -80,6 +84,23 @@ export function candidatesFor(people: Person[]): MentionCandidate[] {
         agents: p.agents.filter((a): a is 'claude-code' | 'codex' => a in AGENT_LABEL),
       })),
   );
+}
+
+// Words that open a request for work. Deliberately short: a missed hint costs nothing, a hint on
+// every chat message would be noise.
+const TASK_START =
+  /^(?:(?:please|pls|can you|could you|would you)\s+)?(?:add|build|bump|change|check|clean|create|delete|document|explain|find|fix|implement|investigate|look|make|migrate|move|refactor|remove|rename|replace|review|rewrite|run|split|test|update|upgrade|write)\b/i;
+
+/**
+ * Whether a message reads like work for an agent but mentions nobody, so no agent's inbox gets
+ * it. Only used to hint the owner about their own message; it never addresses anyone by itself.
+ */
+export function looksLikeAgentTask(text: string, candidates: MentionCandidate[]): boolean {
+  const value = text.trim();
+  if (value.length < 8) return false;
+  const { mentions, agent_mentions } = findMentions(value, candidates);
+  if (mentions.length || agent_mentions.length) return false;
+  return TASK_START.test(value) || /^(?:please|pls|can you|could you)\b/i.test(value);
 }
 
 /** Messages mentioning `me` or my agent that I have not replied to. */

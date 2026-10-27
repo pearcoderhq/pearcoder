@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { WireEvent } from './api';
-import { isOnline, mentionedAgent, openMentionsFor, participants, presenceLabel } from './model';
+import {
+  isOnline,
+  looksLikeAgentTask,
+  mentionedAgent,
+  openMentionsFor,
+  participants,
+  presenceLabel,
+} from './model';
 
 let sequence = 0;
 const event = (actor: string, type: string, payload: Record<string, unknown> = {}): WireEvent => {
@@ -81,5 +88,26 @@ describe('mentions', () => {
     expect(open[1] && mentionedAgent(open[1], 'u1')).toBe('claude-code');
     log.push({ ...event('u1', 'message.created', { text: 'thanks' }), reply_to: open[0]?.id });
     expect(openMentionsFor(log, 'u1')).toHaveLength(1);
+  });
+});
+
+describe('unaddressed task hint', () => {
+  const candidates = [
+    { label: 'Hana', user: 'u1' },
+    { label: "Hana's Claude Code", user: 'u1', agent: 'claude-code' as const },
+  ];
+
+  it('flags a request for work that mentions nobody', () => {
+    expect(looksLikeAgentTask('Fix the retry on 503', candidates)).toBe(true);
+    expect(looksLikeAgentTask('can you rename token.ts?', candidates)).toBe(true);
+    expect(looksLikeAgentTask('please look at the flaky test', candidates)).toBe(true);
+  });
+
+  it('stays quiet once someone is mentioned, or for plain chat', () => {
+    expect(looksLikeAgentTask("@Hana's Claude Code fix the retry on 503", candidates)).toBe(false);
+    expect(looksLikeAgentTask('@Hana fix the retry on 503', candidates)).toBe(false);
+    expect(looksLikeAgentTask('lunch at 12?', candidates)).toBe(false);
+    expect(looksLikeAgentTask('fixed it', candidates)).toBe(false);
+    expect(looksLikeAgentTask('fix', candidates)).toBe(false);
   });
 });
