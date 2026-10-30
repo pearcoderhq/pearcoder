@@ -17,9 +17,9 @@
     "test:e2e": "pnpm build && pnpm --filter @pearcoderhq/e2e test:e2e"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.2",
+    "@biomejs/biome": "2.6.3",
     "@changesets/cli": "3.0.3",
-    "@swc/core": "^1.16.18",
+    "@swc/core": "^1.16.20",
     "@types/node": "^24",
     "dependency-cruiser": "18.7.0",
     "typescript": "7.0.2",
