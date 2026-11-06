@@ -25,14 +25,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hono/node-server": "2.1.5",
+    "@hono/node-server": "2.1.6",
     "@pearcoderhq/client": "workspace:*",
     "@pearcoderhq/core": "workspace:*",
     "@pearcoderhq/protocol": "workspace:*",
     "@pearcoderhq/server": "workspace:*",
     "@pearcoderhq/web": "workspace:*",
-    "hono": "4.13.13",
-    "ws": "8.22.0",
+    "hono": "4.13.16",
+    "ws": "8.22.1",
     "zod": "4.6.7"
   },
   "devDependencies": {
